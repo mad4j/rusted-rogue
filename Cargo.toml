@@ -1,0 +1,22 @@
+[package]
+name = "rusted-rogue"
+version = "0.1.0"
+edition = "2021"
+default-run = "rusted-rogue"
+
+[[bin]]
+name = "map_viewer"
+path = "src/bin/map_viewer.rs"
+
+[[bin]]
+name = "hotspot_bench"
+path = "src/bin/hotspot_bench.rs"
+
+[dependencies]
+bitflags = "2"
+crossterm = "0.28"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+proptest = "1"

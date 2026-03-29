@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "score": 1314,
+      "level": 1,
+      "turns": 64,
+      "monsters_defeated": 1,
+      "outcome": "quit",
+      "recorded_at_unix": 1774811137
+    },
+    {
+      "score": 1017,
+      "level": 1,
+      "turns": 17,
+      "monsters_defeated": 0,
+      "outcome": "defeated",
+      "recorded_at_unix": 1774808264
+    },
+    {
+      "score": 1017,
+      "level": 1,
+      "turns": 17,
+      "monsters_defeated": 0,
+      "outcome": "defeated",
+      "recorded_at_unix": 1774808265
+    },
+    {
+      "score": 1017,
+      "level": 1,
+      "turns": 17,
+      "monsters_defeated": 0,
+      "outcome": "defeated",
+      "recorded_at_unix": 1774808265
+    },
+    {
+      "score": 1017,
+      "level": 1,
+      "turns": 17,
+      "monsters_defeated": 0,
+      "outcome": "defeated",
+      "recorded_at_unix": 1774808265
+    },
+    {
+      "score": 1017,
+      "level": 1,
+      "turns": 17,
+      "monsters_defeated": 0,
+      "outcome": "defeated",
+      "recorded_at_unix": 1774808265
+    },
+    {
+      "score": 1017,
+      "level": 1,
+      "turns": 17,
+      "monsters_defeated": 0,
+      "outcome": "defeated",
+      "recorded_at_unix": 1774808367
+    },
+    {
+      "score": 1017,
+      "level": 1,
+      "turns": 17,
+      "monsters_defeated": 0,
+      "outcome": "defeated",
+      "recorded_at_unix": 1774808367
+    },
+    {
+      "score": 1017,
+      "level": 1,
+      "turns": 17,
+      "monsters_defeated": 0,
+      "outcome": "defeated",
+      "recorded_at_unix": 1774808367
+    },
+    {
+      "score": 1017,
+      "level": 1,
+      "turns": 17,
+      "monsters_defeated": 0,
+      "outcome": "defeated",
+      "recorded_at_unix": 1774808367
+    },
+    {
+      "score": 1017,
+      "level": 1,
+      "turns": 17,
+      "monsters_defeated": 0,
+      "outcome": "defeated",
+      "recorded_at_unix": 1774808368
+    },
+    {
+      "score": 1001,
+      "level": 1,
+      "turns": 1,
+      "monsters_defeated": 0,
+      "outcome": "quit",
+      "recorded_at_unix": 1774808324
+    },
+    {
+      "score": 1001,
+      "level": 1,
+      "turns": 1,
+      "monsters_defeated": 0,
+      "outcome": "quit",
+      "recorded_at_unix": 1774808337
+    },
+    {
+      "score": 1001,
+      "level": 1,
+      "turns": 1,
+      "monsters_defeated": 0,
+      "outcome": "quit",
+      "recorded_at_unix": 1774808716
+    },
+    {
+      "score": 1001,
+      "level": 1,
+      "turns": 1,
+      "monsters_defeated": 0,
+      "outcome": "quit",
+      "recorded_at_unix": 1774809048
+    },
+    {
+      "score": 1001,
+      "level": 1,
+      "turns": 1,
+      "monsters_defeated": 0,
+      "outcome": "quit",
+      "recorded_at_unix": 1774809055
+    },
+    {
+      "score": 1000,
+      "level": 1,
+      "turns": 0,
+      "monsters_defeated": 0,
+      "outcome": "quit",
+      "recorded_at_unix": 1774811071
+    }
+  ]
+}
