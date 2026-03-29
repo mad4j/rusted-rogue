@@ -525,6 +525,8 @@ pub fn generate_level(rng: &mut GameRng) -> GeneratedLevel {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{HashSet, VecDeque};
+
     use proptest::prelude::*;
 
     use super::{generate_level, DungeonGrid, Room};
@@ -625,6 +627,85 @@ mod tests {
         }
 
         assert!(found_connection_tile);
+    }
+
+    #[test]
+    fn all_room_centers_are_reachable_from_spawn_for_seed_window() {
+        for seed in 0..64 {
+            let mut rng = GameRng::new(seed);
+            let generated = generate_level(&mut rng);
+            let spawn = generated.spawn_position();
+
+            let mut visited: HashSet<(i16, i16)> = HashSet::new();
+            let mut queue = VecDeque::new();
+
+            visited.insert((spawn.row, spawn.col));
+            queue.push_back((spawn.row, spawn.col));
+
+            while let Some((row, col)) = queue.pop_front() {
+                for (drow, dcol) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                    let nr = row + drow;
+                    let nc = col + dcol;
+                    if !generated.grid.is_walkable(nr, nc) {
+                        continue;
+                    }
+                    if visited.insert((nr, nc)) {
+                        queue.push_back((nr, nc));
+                    }
+                }
+            }
+
+            for room in &generated.rooms {
+                let center = ((room.top_row + room.bottom_row) / 2, (room.left_col + room.right_col) / 2);
+                assert!(
+                    visited.contains(&center),
+                    "seed {seed}: room center {:?} not reachable from spawn",
+                    center
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn seed_window_contains_dead_end_tunnels() {
+        let mut found_dead_end = false;
+
+        for seed in 0..128 {
+            let mut rng = GameRng::new(seed);
+            let generated = generate_level(&mut rng);
+            let (rows, cols) = generated.grid.dimensions();
+
+            for row in 1..(rows as i16 - 1) {
+                for col in 1..(cols as i16 - 1) {
+                    let tile = generated.grid.get(row, col).unwrap_or(TileFlags::NOTHING);
+                    if !tile.contains(TileFlags::TUNNEL) {
+                        continue;
+                    }
+
+                    let mut walkable_neighbors = 0;
+                    for (drow, dcol) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                        if generated.grid.is_walkable(row + drow, col + dcol) {
+                            walkable_neighbors += 1;
+                        }
+                    }
+
+                    if walkable_neighbors == 1 {
+                        found_dead_end = true;
+                        break;
+                    }
+                }
+
+                if found_dead_end {
+                    break;
+                }
+            }
+
+            if found_dead_end {
+                break;
+            }
+        }
+
+        assert!(found_dead_end, "expected at least one dead-end tunnel in seed window");
     }
 
     proptest! {
