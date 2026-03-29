@@ -1,0 +1,14 @@
+[package]
+name = "rusted-rogue"
+version = "0.1.0"
+edition = "2021"
+description = "Rust port of the classic Rogue game"
+
+[[bin]]
+name = "rusted-rogue"
+path = "src/main.rs"
+
+[dependencies]
+crossterm = "0.28"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
