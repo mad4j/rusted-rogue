@@ -748,6 +748,41 @@ mod tests {
         assert!(found_dead_end, "expected at least one dead-end tunnel in seed window");
     }
 
+    #[test]
+    fn higher_depth_produces_more_tunnels_on_average() {
+        let mut low_depth_tunnels = 0usize;
+        let mut high_depth_tunnels = 0usize;
+
+        for seed in 0..128 {
+            let mut low_rng = GameRng::new(seed);
+            let low = generate_level_with_depth(&mut low_rng, 2);
+
+            let mut high_rng = GameRng::new(seed);
+            let high = generate_level_with_depth(&mut high_rng, 20);
+
+            let (rows, cols) = low.grid.dimensions();
+
+            for row in 0..rows as i16 {
+                for col in 0..cols as i16 {
+                    let low_tile = low.grid.get(row, col).unwrap_or(TileFlags::NOTHING);
+                    if low_tile.contains(TileFlags::TUNNEL) {
+                        low_depth_tunnels += 1;
+                    }
+
+                    let high_tile = high.grid.get(row, col).unwrap_or(TileFlags::NOTHING);
+                    if high_tile.contains(TileFlags::TUNNEL) {
+                        high_depth_tunnels += 1;
+                    }
+                }
+            }
+        }
+
+        assert!(
+            high_depth_tunnels > low_depth_tunnels,
+            "expected higher depth to produce more tunnels on average (low={low_depth_tunnels}, high={high_depth_tunnels})"
+        );
+    }
+
     proptest! {
         #[test]
         fn generated_room_stays_in_bounds_for_any_seed(seed in any::<i32>()) {

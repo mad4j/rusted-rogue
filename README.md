@@ -27,7 +27,7 @@ Visualize generated dungeon maps with textual output:
 # Single map with seed 42
 cargo run --bin map_viewer 42
 
-# View 10 consecutive levels with same seed
+# View 10 consecutive levels with same seed and increasing dungeon depth (1..10)
 cargo run --bin map_viewer 42 10
 
 # Deterministic output for visual regression testing
