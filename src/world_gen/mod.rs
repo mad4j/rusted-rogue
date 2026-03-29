@@ -214,9 +214,14 @@ fn add_mazes(
     rng: &mut GameRng,
     slot_rooms: &[Option<Room>; MAXROOMS],
     slot_kinds: &mut [SlotKind; MAXROOMS],
+    level_depth: i16,
 ) {
+    if level_depth <= 1 {
+        return;
+    }
+
     let start = rng.get_rand(0, (MAXROOMS - 1) as i32) as usize;
-    let maze_percent = 22;
+    let maze_percent = maze_percent_for_level(level_depth);
 
     for i in 0..MAXROOMS {
         let slot = (start + i) % MAXROOMS;
@@ -226,6 +231,18 @@ fn add_mazes(
             draw_maze_in_slot(grid, rng, slot);
         }
     }
+}
+
+fn maze_percent_for_level(level_depth: i16) -> i32 {
+    if level_depth <= 1 {
+        return 0;
+    }
+
+    let mut percent = (level_depth as i32 * 5) / 4;
+    if level_depth > 15 {
+        percent += level_depth as i32;
+    }
+    percent
 }
 
 fn carve_tunnel(grid: &mut DungeonGrid, row: i16, col: i16) {
@@ -480,7 +497,7 @@ fn fill_out_level(
     }
 }
 
-pub fn generate_level(rng: &mut GameRng) -> GeneratedLevel {
+pub fn generate_level_with_depth(rng: &mut GameRng, level_depth: i16) -> GeneratedLevel {
     let mut grid = DungeonGrid::new();
     let required = required_room_group(rng);
     let mut slot_rooms: [Option<Room>; MAXROOMS] = [None; MAXROOMS];
@@ -495,7 +512,7 @@ pub fn generate_level(rng: &mut GameRng) -> GeneratedLevel {
         }
     }
 
-    add_mazes(&mut grid, rng, &slot_rooms, &mut slot_kinds);
+    add_mazes(&mut grid, rng, &slot_rooms, &mut slot_kinds, level_depth);
 
     for i in 0..MAXROOMS {
         if i < (MAXROOMS - 1) {
@@ -523,13 +540,17 @@ pub fn generate_level(rng: &mut GameRng) -> GeneratedLevel {
     GeneratedLevel { grid, rooms }
 }
 
+pub fn generate_level(rng: &mut GameRng) -> GeneratedLevel {
+    generate_level_with_depth(rng, 1)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{HashSet, VecDeque};
 
     use proptest::prelude::*;
 
-    use super::{generate_level, DungeonGrid, Room};
+    use super::{generate_level, generate_level_with_depth, maze_percent_for_level, DungeonGrid, Room};
     use crate::core_types::{TileFlags, DCOLS, DROWS, MAXROOMS};
     use crate::rng::GameRng;
 
@@ -627,6 +648,25 @@ mod tests {
         }
 
         assert!(found_connection_tile);
+    }
+
+    #[test]
+    fn maze_percent_matches_legacy_formula() {
+        assert_eq!(maze_percent_for_level(1), 0);
+        assert_eq!(maze_percent_for_level(2), 2);
+        assert_eq!(maze_percent_for_level(10), 12);
+        assert_eq!(maze_percent_for_level(16), 36);
+    }
+
+    #[test]
+    fn depth_aware_generator_is_deterministic() {
+        let mut rng_a = GameRng::new(777);
+        let mut rng_b = GameRng::new(777);
+
+        let a = generate_level_with_depth(&mut rng_a, 20);
+        let b = generate_level_with_depth(&mut rng_b, 20);
+
+        assert_eq!(a.rooms, b.rooms);
     }
 
     #[test]

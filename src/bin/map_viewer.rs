@@ -8,7 +8,7 @@
 use std::env;
 use rusted_rogue::core_types::{TileFlags, DCOLS, DROWS};
 use rusted_rogue::rng::GameRng;
-use rusted_rogue::world_gen::generate_level;
+use rusted_rogue::world_gen::generate_level_with_depth;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -33,7 +33,7 @@ fn main() {
     
     for level_num in 1..=num_levels {
         let mut rng = GameRng::new(seed + (level_num as i32 - 1) * 1000);
-        let generated = generate_level(&mut rng);
+        let generated = generate_level_with_depth(&mut rng, level_num as i16);
         
         println!("┌─ Level {} ─────────────────────────────────────────────────────────────────────┐", level_num);
         println!();
