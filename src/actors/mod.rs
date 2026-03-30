@@ -5,10 +5,32 @@ use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MonsterKind {
-    Kestrel,
-    IceMonster,
+    Aquator,
+    Bat,
+    Centaur,
+    Dragon,
+    Emu,
     VenusFlytrap,
+    Griffin,
+    Hobgoblin,
+    IceMonster,
+    Jabberwock,
+    Kestrel,
+    Leprechaun,
+    Medusa,
+    Nymph,
+    Orc,
+    Phantom,
+    Quagga,
     Rattlesnake,
+    Snake,
+    Troll,
+    BlackUnicorn,
+    Vampire,
+    Wraith,
+    Xeroc,
+    Yeti,
+    Zombie,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +38,11 @@ pub enum SpecialHit {
     Freeze,
     Hold,
     Sting,
+    Rusts,
+    StealsGold,
+    StealsItem,
+    DrainsLife,
+    DropsLevel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +50,11 @@ pub enum StatusEffectEvent {
     Frozen { turns: u8 },
     Held,
     Stung { max_hit_points_lost: i16 },
+    ArmorRusted,
+    GoldStolen,
+    ItemStolen,
+    LifeDrained { max_hit_points_lost: i16 },
+    LevelDropped,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,11 +69,60 @@ pub struct Monster {
 impl Monster {
     pub const fn new(kind: MonsterKind, position: Position) -> Self {
         match kind {
-            MonsterKind::Kestrel => Self {
+            MonsterKind::Aquator => Self {
                 kind,
                 position,
-                hit_points: 2,
+                hit_points: 25,
                 attack_damage: 1,
+                special_hit: Some(SpecialHit::Rusts),
+            },
+            MonsterKind::Bat => Self {
+                kind,
+                position,
+                hit_points: 10,
+                attack_damage: 3,
+                special_hit: None,
+            },
+            MonsterKind::Centaur => Self {
+                kind,
+                position,
+                hit_points: 32,
+                attack_damage: 9,
+                special_hit: None,
+            },
+            MonsterKind::Dragon => Self {
+                kind,
+                position,
+                hit_points: 145,
+                attack_damage: 24,
+                special_hit: None,
+            },
+            MonsterKind::Emu => Self {
+                kind,
+                position,
+                hit_points: 11,
+                attack_damage: 3,
+                special_hit: None,
+            },
+            MonsterKind::VenusFlytrap => Self {
+                kind,
+                position,
+                hit_points: 4,
+                attack_damage: 1,
+                special_hit: Some(SpecialHit::Hold),
+            },
+            MonsterKind::Griffin => Self {
+                kind,
+                position,
+                hit_points: 115,
+                attack_damage: 25,
+                special_hit: None,
+            },
+            MonsterKind::Hobgoblin => Self {
+                kind,
+                position,
+                hit_points: 15,
+                attack_damage: 3,
                 special_hit: None,
             },
             MonsterKind::IceMonster => Self {
@@ -51,12 +132,61 @@ impl Monster {
                 attack_damage: 1,
                 special_hit: Some(SpecialHit::Freeze),
             },
-            MonsterKind::VenusFlytrap => Self {
+            MonsterKind::Jabberwock => Self {
                 kind,
                 position,
-                hit_points: 4,
+                hit_points: 132,
+                attack_damage: 30,
+                special_hit: None,
+            },
+            MonsterKind::Kestrel => Self {
+                kind,
+                position,
+                hit_points: 2,
                 attack_damage: 1,
-                special_hit: Some(SpecialHit::Hold),
+                special_hit: None,
+            },
+            MonsterKind::Leprechaun => Self {
+                kind,
+                position,
+                hit_points: 25,
+                attack_damage: 0,
+                special_hit: Some(SpecialHit::StealsGold),
+            },
+            MonsterKind::Medusa => Self {
+                kind,
+                position,
+                hit_points: 97,
+                attack_damage: 16,
+                special_hit: None,
+            },
+            MonsterKind::Nymph => Self {
+                kind,
+                position,
+                hit_points: 25,
+                attack_damage: 0,
+                special_hit: Some(SpecialHit::StealsItem),
+            },
+            MonsterKind::Orc => Self {
+                kind,
+                position,
+                hit_points: 25,
+                attack_damage: 6,
+                special_hit: None,
+            },
+            MonsterKind::Phantom => Self {
+                kind,
+                position,
+                hit_points: 76,
+                attack_damage: 20,
+                special_hit: None,
+            },
+            MonsterKind::Quagga => Self {
+                kind,
+                position,
+                hit_points: 30,
+                attack_damage: 15,
+                special_hit: None,
             },
             MonsterKind::Rattlesnake => Self {
                 kind,
@@ -64,6 +194,62 @@ impl Monster {
                 hit_points: 2,
                 attack_damage: 1,
                 special_hit: Some(SpecialHit::Sting),
+            },
+            MonsterKind::Snake => Self {
+                kind,
+                position,
+                hit_points: 8,
+                attack_damage: 3,
+                special_hit: None,
+            },
+            MonsterKind::Troll => Self {
+                kind,
+                position,
+                hit_points: 75,
+                attack_damage: 24,
+                special_hit: None,
+            },
+            MonsterKind::BlackUnicorn => Self {
+                kind,
+                position,
+                hit_points: 90,
+                attack_damage: 40,
+                special_hit: None,
+            },
+            MonsterKind::Vampire => Self {
+                kind,
+                position,
+                hit_points: 55,
+                attack_damage: 14,
+                special_hit: Some(SpecialHit::DrainsLife),
+            },
+            MonsterKind::Wraith => Self {
+                kind,
+                position,
+                hit_points: 45,
+                attack_damage: 16,
+                special_hit: Some(SpecialHit::DropsLevel),
+            },
+            MonsterKind::Xeroc => Self {
+                kind,
+                position,
+                hit_points: 42,
+                attack_damage: 24,
+                special_hit: None,
+            },
+            MonsterKind::Yeti => Self {
+                kind,
+                position,
+                hit_points: 35,
+                attack_damage: 18,
+                special_hit: None,
+            },
+            MonsterKind::Zombie => Self {
+                kind,
+                position,
+                hit_points: 21,
+                attack_damage: 7,
+                special_hit: None,
             },
         }
     }
@@ -76,10 +262,32 @@ impl Monster {
 impl MonsterKind {
     pub const fn display_char(self) -> char {
         match self {
-            MonsterKind::Kestrel => 'K',
-            MonsterKind::IceMonster => 'I',
+            MonsterKind::Aquator => 'A',
+            MonsterKind::Bat => 'B',
+            MonsterKind::Centaur => 'C',
+            MonsterKind::Dragon => 'D',
+            MonsterKind::Emu => 'E',
             MonsterKind::VenusFlytrap => 'F',
+            MonsterKind::Griffin => 'G',
+            MonsterKind::Hobgoblin => 'H',
+            MonsterKind::IceMonster => 'I',
+            MonsterKind::Jabberwock => 'J',
+            MonsterKind::Kestrel => 'K',
+            MonsterKind::Leprechaun => 'L',
+            MonsterKind::Medusa => 'M',
+            MonsterKind::Nymph => 'N',
+            MonsterKind::Orc => 'O',
+            MonsterKind::Phantom => 'P',
+            MonsterKind::Quagga => 'Q',
             MonsterKind::Rattlesnake => 'R',
+            MonsterKind::Snake => 'S',
+            MonsterKind::Troll => 'T',
+            MonsterKind::BlackUnicorn => 'U',
+            MonsterKind::Vampire => 'V',
+            MonsterKind::Wraith => 'W',
+            MonsterKind::Xeroc => 'X',
+            MonsterKind::Yeti => 'Y',
+            MonsterKind::Zombie => 'Z',
         }
     }
 }
@@ -130,8 +338,39 @@ pub fn spawn_basic_monsters(
         return Vec::new();
     }
 
+    let all_kinds = [
+        MonsterKind::Aquator,
+        MonsterKind::Bat,
+        MonsterKind::Centaur,
+        MonsterKind::Dragon,
+        MonsterKind::Emu,
+        MonsterKind::VenusFlytrap,
+        MonsterKind::Griffin,
+        MonsterKind::Hobgoblin,
+        MonsterKind::IceMonster,
+        MonsterKind::Jabberwock,
+        MonsterKind::Kestrel,
+        MonsterKind::Leprechaun,
+        MonsterKind::Medusa,
+        MonsterKind::Nymph,
+        MonsterKind::Orc,
+        MonsterKind::Phantom,
+        MonsterKind::Quagga,
+        MonsterKind::Rattlesnake,
+        MonsterKind::Snake,
+        MonsterKind::Troll,
+        MonsterKind::BlackUnicorn,
+        MonsterKind::Vampire,
+        MonsterKind::Wraith,
+        MonsterKind::Xeroc,
+        MonsterKind::Yeti,
+        MonsterKind::Zombie,
+    ];
+    let kind_index = rng.get_rand(0, (all_kinds.len() - 1) as i32) as usize;
+    let kind = all_kinds[kind_index];
+
     let index = rng.get_rand(0, (candidates.len() - 1) as i32) as usize;
-    vec![Monster::new(MonsterKind::Kestrel, candidates[index])]
+    vec![Monster::new(kind, candidates[index])]
 }
 
 pub fn attack_monster(
@@ -255,6 +494,13 @@ fn special_hit_event(special_hit: SpecialHit) -> Option<StatusEffectEvent> {
         SpecialHit::Sting => Some(StatusEffectEvent::Stung {
             max_hit_points_lost: 1,
         }),
+        SpecialHit::Rusts => Some(StatusEffectEvent::ArmorRusted),
+        SpecialHit::StealsGold => Some(StatusEffectEvent::GoldStolen),
+        SpecialHit::StealsItem => Some(StatusEffectEvent::ItemStolen),
+        SpecialHit::DrainsLife => Some(StatusEffectEvent::LifeDrained {
+            max_hit_points_lost: 2,
+        }),
+        SpecialHit::DropsLevel => Some(StatusEffectEvent::LevelDropped),
     }
 }
 #[cfg(test)]
@@ -288,12 +534,12 @@ mod tests {
         let mut rng = GameRng::new(12345);
         let level = generate_level(&mut rng);
         let player_position = level.spawn_position();
-        let mut monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(18, 16))];
+        let mut monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(3, 22))];
 
         let first_turn = tick_monsters(&mut monsters, &level, player_position);
 
         assert!(first_turn.is_empty());
-        assert_eq!(monsters[0].position, Position::new(18, 15));
+        assert_eq!(monsters[0].position, Position::new(3, 21));
 
         let second_turn = tick_monsters(&mut monsters, &level, player_position);
         let third_turn = tick_monsters(&mut monsters, &level, player_position);
@@ -301,13 +547,13 @@ mod tests {
 
         assert!(second_turn.is_empty());
         assert!(third_turn.is_empty());
-        assert_eq!(monsters[0].position, Position::new(18, 13));
+        assert_eq!(monsters[0].position, Position::new(3, 19));
         assert_ne!(monsters[0].position, player_position);
         assert_eq!(
             fourth_turn,
             vec![CombatEvent::MonsterHitPlayer {
                 monster_kind: MonsterKind::Kestrel,
-                position: Position::new(18, 13),
+                position: Position::new(3, 19),
                 damage: 1,
             }]
         );
@@ -337,7 +583,7 @@ mod tests {
         let mut rng = GameRng::new(12345);
         let level = generate_level(&mut rng);
         let player_position = level.spawn_position();
-        let mut monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(18, 13))];
+        let mut monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(3, 19))];
 
         let events = tick_monsters(&mut monsters, &level, player_position);
 
@@ -346,15 +592,107 @@ mod tests {
             vec![
                 CombatEvent::MonsterHitPlayer {
                     monster_kind: MonsterKind::IceMonster,
-                    position: Position::new(18, 13),
+                    position: Position::new(3, 19),
                     damage: 1,
                 },
                 CombatEvent::MonsterAppliedEffect {
                     monster_kind: MonsterKind::IceMonster,
-                    position: Position::new(18, 13),
+                    position: Position::new(3, 19),
                     effect: StatusEffectEvent::Frozen { turns: 2 },
                 },
             ]
         );
+    }
+
+    #[test]
+    fn aquator_emits_armor_rusted_event() {
+        let mut rng = GameRng::new(12345);
+        let level = generate_level(&mut rng);
+        let player_position = level.spawn_position();
+        let mut monsters = vec![Monster::new(MonsterKind::Aquator, Position::new(3, 19))];
+
+        let events = tick_monsters(&mut monsters, &level, player_position);
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CombatEvent::MonsterAppliedEffect {
+                effect: StatusEffectEvent::ArmorRusted,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn vampire_emits_life_drained_event() {
+        let mut rng = GameRng::new(12345);
+        let level = generate_level(&mut rng);
+        let player_position = level.spawn_position();
+        let mut monsters = vec![Monster::new(MonsterKind::Vampire, Position::new(3, 19))];
+
+        let events = tick_monsters(&mut monsters, &level, player_position);
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CombatEvent::MonsterAppliedEffect {
+                effect: StatusEffectEvent::LifeDrained {
+                    max_hit_points_lost: 2
+                },
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn leprechaun_emits_gold_stolen_event() {
+        let mut rng = GameRng::new(12345);
+        let level = generate_level(&mut rng);
+        let player_position = level.spawn_position();
+        let mut monsters = vec![Monster::new(MonsterKind::Leprechaun, Position::new(3, 19))];
+
+        let events = tick_monsters(&mut monsters, &level, player_position);
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CombatEvent::MonsterAppliedEffect {
+                effect: StatusEffectEvent::GoldStolen,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn nymph_emits_item_stolen_event() {
+        let mut rng = GameRng::new(12345);
+        let level = generate_level(&mut rng);
+        let player_position = level.spawn_position();
+        let mut monsters = vec![Monster::new(MonsterKind::Nymph, Position::new(3, 19))];
+
+        let events = tick_monsters(&mut monsters, &level, player_position);
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CombatEvent::MonsterAppliedEffect {
+                effect: StatusEffectEvent::ItemStolen,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn wraith_emits_level_dropped_event() {
+        let mut rng = GameRng::new(12345);
+        let level = generate_level(&mut rng);
+        let player_position = level.spawn_position();
+        let mut monsters = vec![Monster::new(MonsterKind::Wraith, Position::new(3, 19))];
+
+        let events = tick_monsters(&mut monsters, &level, player_position);
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CombatEvent::MonsterAppliedEffect {
+                effect: StatusEffectEvent::LevelDropped,
+                ..
+            }
+        )));
     }
 }

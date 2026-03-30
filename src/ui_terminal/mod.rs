@@ -74,7 +74,7 @@ fn render(stdout: &mut Stdout, game: &GameLoop) -> io::Result<()> {
         Print(render_last_message(game)),
         MoveTo(0, (DROWS + 2) as u16),
         Clear(ClearType::CurrentLine),
-        Print("Keys: hjkl yubn/arrows move, . rest, , pick up, d drop, w wield, W wear, T take off, P put ring, R remove ring, q quaff, z zap, t throw, ^ identify trap, Q quit"),
+        Print("Keys: hjkl yubn/arrows move, . rest, , pick up, d drop, w wield, W wear, T take off, P put ring, R remove ring, q quaff, z zap, t throw, r read, e eat, ^ identify trap, Q quit"),
     )?;
 
     stdout.flush()
@@ -130,6 +130,8 @@ impl RenderLookups {
                     ItemCategory::Ring => '=',
                     ItemCategory::Potion => '!',
                     ItemCategory::Wand => '/',
+                    ItemCategory::Scroll => '?',
+                    ItemCategory::Food => '%',
                 };
                 (floor_item.position, ch)
             })
@@ -166,17 +168,24 @@ fn render_tile(tile: TileFlags) -> char {
 }
 
 fn render_status(game: &GameLoop) -> String {
+    let hunger = if game.state().is_weak {
+        " [WEAK]"
+    } else if game.state().is_hungry {
+        " [HUNGRY]"
+    } else {
+        ""
+    };
     format!(
-        "Level:{} Turns:{} HP:{}/{} Defeated:{} Inv:{} Monsters:{} Frozen:{}{}",
+        "Level:{} Exp:{}({}) HP:{}/{} Str:{}{} Inv:{} Turns:{}",
         game.state().level,
-        game.state().turns,
+        game.state().player_exp_points,
+        game.state().player_exp_level,
         game.state().player_hit_points,
         game.state().player_max_hit_points,
-        game.state().monsters_defeated,
+        game.state().player_strength,
+        hunger,
         game.state().inventory.len(),
-        game.state().monsters.len(),
-        game.state().frozen_turns,
-        if game.player_is_held() { " held" } else { "" },
+        game.state().turns,
     )
 }
 
@@ -268,6 +277,22 @@ fn combat_message(event: &CombatEvent) -> String {
                 "{} stings you. Max HP -{max_hit_points_lost}.",
                 monster_name(*monster_kind)
             ),
+            StatusEffectEvent::ArmorRusted => {
+                format!("{} rusts your armor.", monster_name(*monster_kind))
+            }
+            StatusEffectEvent::GoldStolen => {
+                format!("{} steals your gold.", monster_name(*monster_kind))
+            }
+            StatusEffectEvent::ItemStolen => {
+                format!("{} steals an item.", monster_name(*monster_kind))
+            }
+            StatusEffectEvent::LifeDrained { max_hit_points_lost } => format!(
+                "{} drains your life. Max HP -{max_hit_points_lost}.",
+                monster_name(*monster_kind)
+            ),
+            StatusEffectEvent::LevelDropped => {
+                format!("{} drains your experience.", monster_name(*monster_kind))
+            }
         },
     }
 }
@@ -283,10 +308,32 @@ fn equipment_slot_name(slot: crate::inventory_items::EquipmentSlot) -> &'static 
 
 fn monster_name(kind: MonsterKind) -> &'static str {
     match kind {
-        MonsterKind::Kestrel => "kestrel",
-        MonsterKind::IceMonster => "ice monster",
+        MonsterKind::Aquator => "aquator",
+        MonsterKind::Bat => "bat",
+        MonsterKind::Centaur => "centaur",
+        MonsterKind::Dragon => "dragon",
+        MonsterKind::Emu => "emu",
         MonsterKind::VenusFlytrap => "venus flytrap",
+        MonsterKind::Griffin => "griffin",
+        MonsterKind::Hobgoblin => "hobgoblin",
+        MonsterKind::IceMonster => "ice monster",
+        MonsterKind::Jabberwock => "jabberwock",
+        MonsterKind::Kestrel => "kestrel",
+        MonsterKind::Leprechaun => "leprechaun",
+        MonsterKind::Medusa => "medusa",
+        MonsterKind::Nymph => "nymph",
+        MonsterKind::Orc => "orc",
+        MonsterKind::Phantom => "phantom",
+        MonsterKind::Quagga => "quagga",
         MonsterKind::Rattlesnake => "rattlesnake",
+        MonsterKind::Snake => "snake",
+        MonsterKind::Troll => "troll",
+        MonsterKind::BlackUnicorn => "black unicorn",
+        MonsterKind::Vampire => "vampire",
+        MonsterKind::Wraith => "wraith",
+        MonsterKind::Xeroc => "xeroc",
+        MonsterKind::Yeti => "yeti",
+        MonsterKind::Zombie => "zombie",
     }
 }
 
@@ -383,7 +430,10 @@ mod tests {
         let lookups = RenderLookups::from_game(&game);
 
         assert_eq!(render_cell(&game, player, &lookups), '@');
-        assert_eq!(render_cell(&game, monster, &lookups), 'K');
+        assert_eq!(
+            render_cell(&game, monster, &lookups),
+            game.state().monsters[0].display_char()
+        );
         assert_eq!(render_cell(&game, item_position, &lookups), ')');
     }
 }

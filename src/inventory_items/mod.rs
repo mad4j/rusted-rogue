@@ -9,6 +9,8 @@ pub enum ItemCategory {
     Ring,
     Potion,
     Wand,
+    Scroll,
+    Food,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,14 +84,335 @@ impl InventoryItem {
         }
     }
 
+    // ── Scrolls ──────────────────────────────────────────────────────────────
+
+    pub const fn scroll_protect_armor() -> Self {
+        Self { name: "scroll of protect armor", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn scroll_hold_monster() -> Self {
+        Self { name: "scroll of hold monster", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn scroll_enchant_weapon() -> Self {
+        Self { name: "scroll of enchant weapon", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn scroll_enchant_armor() -> Self {
+        Self { name: "scroll of enchant armor", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn scroll_identify() -> Self {
+        Self { name: "scroll of identify", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn scroll_teleport() -> Self {
+        Self { name: "scroll of teleport", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn scroll_sleep() -> Self {
+        Self { name: "scroll of sleep", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn scroll_scare_monster() -> Self {
+        Self { name: "scroll of scare monster", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn scroll_remove_curse() -> Self {
+        Self { name: "scroll of remove curse", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn scroll_create_monster() -> Self {
+        Self { name: "scroll of create monster", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn scroll_aggravate_monster() -> Self {
+        Self { name: "scroll of aggravate monster", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn scroll_magic_mapping() -> Self {
+        Self { name: "scroll of magic mapping", category: ItemCategory::Scroll, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    // ── Potions ──────────────────────────────────────────────────────────────
+
+    pub const fn potion_increase_strength() -> Self {
+        Self { name: "potion of increase strength", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_restore_strength() -> Self {
+        Self { name: "potion of restore strength", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_extra_healing() -> Self {
+        Self { name: "potion of extra healing", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_poison() -> Self {
+        Self { name: "potion of poison", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_raise_level() -> Self {
+        Self { name: "potion of raise level", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_blindness() -> Self {
+        Self { name: "potion of blindness", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_hallucination() -> Self {
+        Self { name: "potion of hallucination", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_detect_monster() -> Self {
+        Self { name: "potion of detect monster", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_detect_objects() -> Self {
+        Self { name: "potion of detect objects", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_confusion() -> Self {
+        Self { name: "potion of confusion", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_levitation() -> Self {
+        Self { name: "potion of levitation", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_haste_self() -> Self {
+        Self { name: "potion of haste self", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn potion_see_invisible() -> Self {
+        Self { name: "potion of see invisible", category: ItemCategory::Potion, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    // ── Wands ────────────────────────────────────────────────────────────────
+
+    pub const fn wand_tele_away() -> Self {
+        Self { name: "wand of teleportation", category: ItemCategory::Wand, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn wand_slow_monster() -> Self {
+        Self { name: "wand of slow monster", category: ItemCategory::Wand, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn wand_confuse_monster() -> Self {
+        Self { name: "wand of confuse monster", category: ItemCategory::Wand, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn wand_invisibility() -> Self {
+        Self { name: "wand of invisibility", category: ItemCategory::Wand, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn wand_polymorph() -> Self {
+        Self { name: "wand of polymorph", category: ItemCategory::Wand, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn wand_haste_monster() -> Self {
+        Self { name: "wand of haste monster", category: ItemCategory::Wand, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn wand_put_to_sleep() -> Self {
+        Self { name: "wand of sleep", category: ItemCategory::Wand, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn wand_cancellation() -> Self {
+        Self { name: "wand of cancellation", category: ItemCategory::Wand, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn wand_do_nothing() -> Self {
+        Self { name: "wand of nothing", category: ItemCategory::Wand, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    // ── Rings ────────────────────────────────────────────────────────────────
+
+    pub const fn ring_stealth() -> Self {
+        Self { name: "ring of stealth", category: ItemCategory::Ring, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn ring_teleportation() -> Self {
+        Self { name: "ring of teleportation", category: ItemCategory::Ring, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn ring_regeneration() -> Self {
+        Self { name: "ring of regeneration", category: ItemCategory::Ring, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn ring_slow_digestion() -> Self {
+        Self { name: "ring of slow digestion", category: ItemCategory::Ring, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn ring_add_strength() -> Self {
+        Self { name: "ring of add strength", category: ItemCategory::Ring, attack_bonus: 1, armor_bonus: 0 }
+    }
+
+    pub const fn ring_sustain_strength() -> Self {
+        Self { name: "ring of sustain strength", category: ItemCategory::Ring, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn ring_dexterity() -> Self {
+        Self { name: "ring of dexterity", category: ItemCategory::Ring, attack_bonus: 1, armor_bonus: 0 }
+    }
+
+    pub const fn ring_adornment() -> Self {
+        Self { name: "ring of adornment", category: ItemCategory::Ring, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn ring_see_invisible() -> Self {
+        Self { name: "ring of see invisible", category: ItemCategory::Ring, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn ring_maintain_armor() -> Self {
+        Self { name: "ring of maintain armor", category: ItemCategory::Ring, attack_bonus: 0, armor_bonus: 1 }
+    }
+
+    pub const fn ring_searching() -> Self {
+        Self { name: "ring of searching", category: ItemCategory::Ring, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    // ── Weapons ──────────────────────────────────────────────────────────────
+
+    pub const fn bow() -> Self {
+        Self { name: "bow", category: ItemCategory::Weapon, attack_bonus: 1, armor_bonus: 0 }
+    }
+
+    pub const fn dart() -> Self {
+        Self { name: "dart", category: ItemCategory::Weapon, attack_bonus: 1, armor_bonus: 0 }
+    }
+
+    pub const fn arrow() -> Self {
+        Self { name: "arrow", category: ItemCategory::Weapon, attack_bonus: 1, armor_bonus: 0 }
+    }
+
+    pub const fn shuriken() -> Self {
+        Self { name: "shuriken", category: ItemCategory::Weapon, attack_bonus: 2, armor_bonus: 0 }
+    }
+
+    pub const fn mace() -> Self {
+        Self { name: "mace", category: ItemCategory::Weapon, attack_bonus: 3, armor_bonus: 0 }
+    }
+
+    pub const fn long_sword() -> Self {
+        Self { name: "long sword", category: ItemCategory::Weapon, attack_bonus: 4, armor_bonus: 0 }
+    }
+
+    pub const fn two_handed_sword() -> Self {
+        Self { name: "two-handed sword", category: ItemCategory::Weapon, attack_bonus: 5, armor_bonus: 0 }
+    }
+
+    // ── Armor ────────────────────────────────────────────────────────────────
+
+    pub const fn ring_mail() -> Self {
+        Self { name: "ring mail", category: ItemCategory::Armor, attack_bonus: 0, armor_bonus: 2 }
+    }
+
+    pub const fn scale_armor() -> Self {
+        Self { name: "scale armor", category: ItemCategory::Armor, attack_bonus: 0, armor_bonus: 3 }
+    }
+
+    pub const fn chain_mail() -> Self {
+        Self { name: "chain mail", category: ItemCategory::Armor, attack_bonus: 0, armor_bonus: 4 }
+    }
+
+    pub const fn banded_mail() -> Self {
+        Self { name: "banded mail", category: ItemCategory::Armor, attack_bonus: 0, armor_bonus: 5 }
+    }
+
+    pub const fn splint_mail() -> Self {
+        Self { name: "splint mail", category: ItemCategory::Armor, attack_bonus: 0, armor_bonus: 6 }
+    }
+
+    pub const fn plate_armor() -> Self {
+        Self { name: "plate armor", category: ItemCategory::Armor, attack_bonus: 0, armor_bonus: 7 }
+    }
+
+    // ── Food ─────────────────────────────────────────────────────────────────
+
+    pub const fn food_ration() -> Self {
+        Self { name: "food ration", category: ItemCategory::Food, attack_bonus: 0, armor_bonus: 0 }
+    }
+
+    pub const fn slime_mold() -> Self {
+        Self { name: "slime-mold", category: ItemCategory::Food, attack_bonus: 0, armor_bonus: 0 }
+    }
+
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
+            // weapons
             "dagger" => Some(Self::dagger()),
+            "bow" => Some(Self::bow()),
+            "dart" => Some(Self::dart()),
+            "arrow" => Some(Self::arrow()),
+            "shuriken" => Some(Self::shuriken()),
+            "mace" => Some(Self::mace()),
+            "long sword" => Some(Self::long_sword()),
+            "two-handed sword" => Some(Self::two_handed_sword()),
+            // armor
             "leather armor" => Some(Self::leather_armor()),
+            "ring mail" => Some(Self::ring_mail()),
+            "scale armor" => Some(Self::scale_armor()),
+            "chain mail" => Some(Self::chain_mail()),
+            "banded mail" => Some(Self::banded_mail()),
+            "splint mail" => Some(Self::splint_mail()),
+            "plate armor" => Some(Self::plate_armor()),
+            // rings
             "ring of protection" => Some(Self::protection_ring()),
             "ring of accuracy" => Some(Self::accuracy_ring()),
+            "ring of stealth" => Some(Self::ring_stealth()),
+            "ring of teleportation" => Some(Self::ring_teleportation()),
+            "ring of regeneration" => Some(Self::ring_regeneration()),
+            "ring of slow digestion" => Some(Self::ring_slow_digestion()),
+            "ring of add strength" => Some(Self::ring_add_strength()),
+            "ring of sustain strength" => Some(Self::ring_sustain_strength()),
+            "ring of dexterity" => Some(Self::ring_dexterity()),
+            "ring of adornment" => Some(Self::ring_adornment()),
+            "ring of see invisible" => Some(Self::ring_see_invisible()),
+            "ring of maintain armor" => Some(Self::ring_maintain_armor()),
+            "ring of searching" => Some(Self::ring_searching()),
+            // potions
             "healing potion" => Some(Self::healing_potion()),
+            "potion of increase strength" => Some(Self::potion_increase_strength()),
+            "potion of restore strength" => Some(Self::potion_restore_strength()),
+            "potion of extra healing" => Some(Self::potion_extra_healing()),
+            "potion of poison" => Some(Self::potion_poison()),
+            "potion of raise level" => Some(Self::potion_raise_level()),
+            "potion of blindness" => Some(Self::potion_blindness()),
+            "potion of hallucination" => Some(Self::potion_hallucination()),
+            "potion of detect monster" => Some(Self::potion_detect_monster()),
+            "potion of detect objects" => Some(Self::potion_detect_objects()),
+            "potion of confusion" => Some(Self::potion_confusion()),
+            "potion of levitation" => Some(Self::potion_levitation()),
+            "potion of haste self" => Some(Self::potion_haste_self()),
+            "potion of see invisible" => Some(Self::potion_see_invisible()),
+            // wands
             "wand of magic missile" => Some(Self::magic_missile_wand()),
+            "wand of teleportation" => Some(Self::wand_tele_away()),
+            "wand of slow monster" => Some(Self::wand_slow_monster()),
+            "wand of confuse monster" => Some(Self::wand_confuse_monster()),
+            "wand of invisibility" => Some(Self::wand_invisibility()),
+            "wand of polymorph" => Some(Self::wand_polymorph()),
+            "wand of haste monster" => Some(Self::wand_haste_monster()),
+            "wand of sleep" => Some(Self::wand_put_to_sleep()),
+            "wand of cancellation" => Some(Self::wand_cancellation()),
+            "wand of nothing" => Some(Self::wand_do_nothing()),
+            // scrolls
+            "scroll of protect armor" => Some(Self::scroll_protect_armor()),
+            "scroll of hold monster" => Some(Self::scroll_hold_monster()),
+            "scroll of enchant weapon" => Some(Self::scroll_enchant_weapon()),
+            "scroll of enchant armor" => Some(Self::scroll_enchant_armor()),
+            "scroll of identify" => Some(Self::scroll_identify()),
+            "scroll of teleport" => Some(Self::scroll_teleport()),
+            "scroll of sleep" => Some(Self::scroll_sleep()),
+            "scroll of scare monster" => Some(Self::scroll_scare_monster()),
+            "scroll of remove curse" => Some(Self::scroll_remove_curse()),
+            "scroll of create monster" => Some(Self::scroll_create_monster()),
+            "scroll of aggravate monster" => Some(Self::scroll_aggravate_monster()),
+            "scroll of magic mapping" => Some(Self::scroll_magic_mapping()),
+            // food
+            "food ration" => Some(Self::food_ration()),
+            "slime-mold" => Some(Self::slime_mold()),
             _ => None,
         }
     }

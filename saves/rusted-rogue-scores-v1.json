@@ -130,12 +130,36 @@
       "recorded_at_unix": 1774809055
     },
     {
-      "score": 1000,
+      "score": 1001,
       "level": 1,
-      "turns": 0,
+      "turns": 1,
       "monsters_defeated": 0,
       "outcome": "quit",
-      "recorded_at_unix": 1774811071
+      "recorded_at_unix": 1774844739
+    },
+    {
+      "score": 1001,
+      "level": 1,
+      "turns": 1,
+      "monsters_defeated": 0,
+      "outcome": "quit",
+      "recorded_at_unix": 1774844747
+    },
+    {
+      "score": 1001,
+      "level": 1,
+      "turns": 1,
+      "monsters_defeated": 0,
+      "outcome": "quit",
+      "recorded_at_unix": 1774845137
+    },
+    {
+      "score": 1001,
+      "level": 1,
+      "turns": 1,
+      "monsters_defeated": 0,
+      "outcome": "quit",
+      "recorded_at_unix": 1774845137
     }
   ]
 }

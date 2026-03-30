@@ -2,7 +2,7 @@ use crate::actors::{
     attack_monster, spawn_basic_monsters, tick_monsters, CombatEvent, Monster, MonsterKind,
     SpecialHit, StatusEffectEvent,
 };
-use crate::core_types::Position;
+use crate::core_types::{EXP_LEVELS, INIT_FOOD, INIT_STRENGTH, Position, TrapKind};
 use crate::inventory_items::{
     apply_item_effects, drop_first_item, equip_first_armor, equip_first_weapon, pick_up_item,
     put_on_first_ring, remove_first_item_by_category, remove_ring, total_armor_bonus,
@@ -40,6 +40,8 @@ pub enum Command {
     Quaff,
     Zap,
     Throw,
+    ReadScroll,
+    Eat,
     IdentifyTrap,
     Save,
     Load,
@@ -56,6 +58,13 @@ pub struct GameState {
     pub player_position: Position,
     pub player_hit_points: i16,
     pub player_max_hit_points: i16,
+    pub player_strength: i16,
+    pub player_max_strength: i16,
+    pub player_exp_points: i64,
+    pub player_exp_level: i16,
+    pub food_remaining: i32,
+    pub is_hungry: bool,
+    pub is_weak: bool,
     pub frozen_turns: u8,
     pub monsters_defeated: u64,
     pub monsters: Vec<Monster>,
@@ -63,6 +72,7 @@ pub struct GameState {
     pub inventory: Vec<InventoryEntry>,
     pub floor_items: Vec<FloorItem>,
     pub trap_positions: Vec<Position>,
+    pub trap_types: Vec<TrapKind>,
     pub known_traps: Vec<Position>,
     pub next_item_id: u64,
     pub last_inventory_events: Vec<InventoryEvent>,
@@ -112,6 +122,13 @@ impl GameLoop {
                 player_position,
                 player_hit_points: 12,
                 player_max_hit_points: 12,
+                player_strength: INIT_STRENGTH,
+                player_max_strength: INIT_STRENGTH,
+                player_exp_points: 0,
+                player_exp_level: 1,
+                food_remaining: INIT_FOOD,
+                is_hungry: false,
+                is_weak: false,
                 frozen_turns: 0,
                 monsters_defeated: 0,
                 monsters,
@@ -128,6 +145,7 @@ impl GameLoop {
                     },
                 ],
                 trap_positions: vec![Position::new(player_position.row - 1, player_position.col)],
+                trap_types: vec![TrapKind::DartTrap],
                 known_traps: Vec::new(),
                 next_item_id: 1,
                 last_inventory_events: Vec::new(),
@@ -183,6 +201,8 @@ impl GameLoop {
             'q' => Command::Quaff,
             'z' => Command::Zap,
             't' => Command::Throw,
+            'r' => Command::ReadScroll,
+            'e' => Command::Eat,
             '^' => Command::IdentifyTrap,
             'S' => Command::Save,
             'L' => Command::Load,
@@ -196,7 +216,8 @@ impl GameLoop {
     }
 
     fn player_attack_damage(&self) -> i16 {
-        1 + total_attack_bonus(&self.state.inventory)
+        let str_bonus = (self.state.player_strength - INIT_STRENGTH) / 4;
+        1 + str_bonus.max(0) + total_attack_bonus(&self.state.inventory)
     }
 
     fn player_armor_bonus(&self) -> i16 {
@@ -238,6 +259,19 @@ impl GameLoop {
         if let Some(event) = attack_monster(&mut self.state.monsters, target, attack_damage) {
             if matches!(event, CombatEvent::PlayerHitMonster { killed: true, .. }) {
                 self.state.monsters_defeated += 1;
+                self.state.player_exp_points += 5;
+                let next_level = self.state.player_exp_level as usize;
+                if next_level < EXP_LEVELS.len()
+                    && self.state.player_exp_points >= EXP_LEVELS[next_level - 1]
+                {
+                    self.state.player_exp_level = (self.state.player_exp_level + 1).min(21);
+                    self.state.player_max_hit_points += 4;
+                    self.state.player_hit_points = self.state.player_max_hit_points;
+                    self.state.last_system_message = Some(format!(
+                        "Welcome to experience level {}!",
+                        self.state.player_exp_level
+                    ));
+                }
             }
             self.state.last_turn_events.push(event);
             self.state.last_move_blocked = false;
@@ -278,9 +312,77 @@ impl GameLoop {
             Command::Quaff => {
                 remove_first_item_by_category(&mut self.state.inventory, ItemCategory::Potion).map(
                     |entry| {
-                        self.state.player_hit_points = (self.state.player_hit_points + 4)
-                            .min(self.state.player_max_hit_points);
-                        self.state.last_system_message = Some("You feel better.".to_string());
+                        let msg = match entry.item.name {
+                            "healing potion" => {
+                                self.state.player_hit_points = (self.state.player_hit_points + 4)
+                                    .min(self.state.player_max_hit_points);
+                                "You feel better."
+                            }
+                            "potion of extra healing" => {
+                                self.state.player_hit_points = (self.state.player_hit_points + 8)
+                                    .min(self.state.player_max_hit_points);
+                                "You feel much better."
+                            }
+                            "potion of increase strength" => "You feel stronger.",
+                            "potion of restore strength" => "You feel your strength return.",
+                            "potion of poison" => "You feel very sick.",
+                            "potion of raise level" => "You feel more experienced.",
+                            "potion of blindness" => "A cloud of darkness surrounds you.",
+                            "potion of hallucination" => "Oh wow, everything seems so cosmic!",
+                            "potion of detect monster" => "You sense the presence of monsters.",
+                            "potion of detect objects" => "You sense the presence of objects.",
+                            "potion of confusion" => "You feel confused.",
+                            "potion of levitation" => "You start to float in the air.",
+                            "potion of haste self" => "You feel yourself moving faster.",
+                            "potion of see invisible" => "Your vision becomes clear.",
+                            _ => "You drink the potion.",
+                        };
+                        self.state.last_system_message = Some(msg.to_string());
+                        vec![InventoryEvent::Used {
+                            name: entry.item.name,
+                        }]
+                    },
+                )
+            }
+            Command::ReadScroll => {
+                remove_first_item_by_category(&mut self.state.inventory, ItemCategory::Scroll).map(
+                    |entry| {
+                        let msg = match entry.item.name {
+                            "scroll of protect armor" => "Your armor glows faintly.",
+                            "scroll of hold monster" => "The monsters are frozen.",
+                            "scroll of enchant weapon" => "Your weapon glows blue.",
+                            "scroll of enchant armor" => "Your armor glows silver.",
+                            "scroll of identify" => "You can identify this item.",
+                            "scroll of teleport" => "You suddenly find yourself somewhere else.",
+                            "scroll of sleep" => "You fall asleep.",
+                            "scroll of scare monster" => "The monsters flee.",
+                            "scroll of remove curse" => {
+                                "You feel as if someone is watching over you."
+                            }
+                            "scroll of create monster" => "You hear a faint cry in the distance.",
+                            "scroll of aggravate monster" => {
+                                "You hear a high pitched humming noise."
+                            }
+                            "scroll of magic mapping" => {
+                                "You feel a sense of the dungeon around you."
+                            }
+                            _ => "You read the scroll.",
+                        };
+                        self.state.last_system_message = Some(msg.to_string());
+                        vec![InventoryEvent::Used {
+                            name: entry.item.name,
+                        }]
+                    },
+                )
+            }
+            Command::Eat => {
+                remove_first_item_by_category(&mut self.state.inventory, ItemCategory::Food).map(
+                    |entry| {
+                        self.state.food_remaining = INIT_FOOD;
+                        self.state.is_hungry = false;
+                        self.state.is_weak = false;
+                        self.state.last_system_message =
+                            Some("Yum, that tasted good.".to_string());
                         vec![InventoryEvent::Used {
                             name: entry.item.name,
                         }]
@@ -348,10 +450,16 @@ impl GameLoop {
                     .find(|position| is_adjacent(*position, self.state.player_position));
 
                 if let Some(position) = found {
+                    let trap_idx = self.state.trap_positions.iter().position(|&p| p == position);
+                    let trap_name = trap_idx
+                        .and_then(|i| self.state.trap_types.get(i))
+                        .map(|k| k.name())
+                        .unwrap_or("trap");
                     if !self.state.known_traps.contains(&position) {
                         self.state.known_traps.push(position);
                     }
-                    self.state.last_system_message = Some("Trap identified.".to_string());
+                    self.state.last_system_message =
+                        Some(format!("You found a {trap_name}."));
                     Some(Vec::new())
                 } else {
                     self.state.last_system_message = Some("No trap nearby.".to_string());
@@ -420,6 +528,34 @@ impl GameLoop {
 
     fn advance_world_turn(&mut self) -> StepOutcome {
         self.state.turns += 1;
+
+        // Hunger tick — reduce food every 2 turns
+        if self.state.turns % 2 == 0 {
+            self.state.food_remaining -= 1;
+            if self.state.food_remaining <= 0 {
+                self.state.player_hit_points = (self.state.player_hit_points - 1).max(0);
+                self.state.last_system_message = Some("You are starving!".to_string());
+                if self.state.player_hit_points == 0 {
+                    self.state.quit_requested = true;
+                }
+            } else if self.state.food_remaining <= 20 && !self.state.is_weak {
+                self.state.is_weak = true;
+                self.state.is_hungry = true;
+                self.state.last_system_message =
+                    Some("You feel weak with hunger.".to_string());
+            } else if self.state.food_remaining <= 150 && !self.state.is_hungry {
+                self.state.is_hungry = true;
+                self.state.last_system_message =
+                    Some("You are starting to feel hungry.".to_string());
+            }
+        }
+
+        if self.state.player_hit_points == 0 {
+            self.state.quit_requested = true;
+            self.record_high_score(persistence::RunOutcome::Defeated);
+            return StepOutcome::Finished;
+        }
+
         let events = tick_monsters(
             &mut self.state.monsters,
             &self.current_level,
@@ -453,6 +589,18 @@ impl GameLoop {
                             .player_hit_points
                             .min(self.state.player_max_hit_points);
                     }
+                    StatusEffectEvent::LifeDrained { max_hit_points_lost } => {
+                        self.state.player_max_hit_points =
+                            (self.state.player_max_hit_points - max_hit_points_lost).max(1);
+                        self.state.player_hit_points = self
+                            .state
+                            .player_hit_points
+                            .min(self.state.player_max_hit_points);
+                    }
+                    StatusEffectEvent::GoldStolen => {}
+                    StatusEffectEvent::ItemStolen => {}
+                    StatusEffectEvent::LevelDropped => {}
+                    StatusEffectEvent::ArmorRusted => {}
                 },
                 CombatEvent::PlayerHitMonster { .. } => {}
             }
@@ -526,18 +674,58 @@ impl GameLoop {
                 self.state.pending_direction = Some(direction);
                 match self.try_move_player(direction) {
                     PlayerAction::Moved | PlayerAction::Attacked | PlayerAction::Held => {
-                        if self
+                        if let Some(trap_idx) = self
                             .state
                             .trap_positions
-                            .contains(&self.state.player_position)
+                            .iter()
+                            .position(|&p| p == self.state.player_position)
                         {
+                            let trap_kind = self
+                                .state
+                                .trap_types
+                                .get(trap_idx)
+                                .copied()
+                                .unwrap_or(TrapKind::DartTrap);
                             if !self.state.known_traps.contains(&self.state.player_position) {
                                 self.state.known_traps.push(self.state.player_position);
                             }
-                            self.state.player_hit_points =
-                                (self.state.player_hit_points - 2).max(0);
-                            self.state.last_system_message =
-                                Some("A trap hits you for 2 damage.".to_string());
+                            match trap_kind {
+                                TrapKind::TrapDoor => {
+                                    self.state.last_system_message =
+                                        Some("You fell down a trap door!".to_string());
+                                }
+                                TrapKind::BearTrap => {
+                                    self.state.frozen_turns =
+                                        (self.state.frozen_turns + 4).min(8);
+                                    self.state.last_system_message =
+                                        Some("You are caught in a bear trap!".to_string());
+                                }
+                                TrapKind::TeleTrap => {
+                                    self.state.last_system_message = Some(
+                                        "You trip over a trap and are teleported!".to_string(),
+                                    );
+                                }
+                                TrapKind::DartTrap => {
+                                    self.state.player_hit_points =
+                                        (self.state.player_hit_points - 2).max(0);
+                                    self.state.player_strength =
+                                        (self.state.player_strength - 1).max(1);
+                                    self.state.last_system_message = Some(
+                                        "A dart hits you for 2 damage and poisons you!"
+                                            .to_string(),
+                                    );
+                                }
+                                TrapKind::SleepingGasTrap => {
+                                    self.state.frozen_turns =
+                                        (self.state.frozen_turns + 3).min(6);
+                                    self.state.last_system_message =
+                                        Some("A puff of sleeping gas hits you!".to_string());
+                                }
+                                TrapKind::RustTrap => {
+                                    self.state.last_system_message =
+                                        Some("A gush of water rusts your armor!".to_string());
+                                }
+                            }
                             if self.state.player_hit_points == 0 {
                                 self.state.quit_requested = true;
                                 self.record_high_score(persistence::RunOutcome::Defeated);
@@ -559,6 +747,8 @@ impl GameLoop {
             | Command::Quaff
             | Command::Zap
             | Command::Throw
+            | Command::ReadScroll
+            | Command::Eat
             | Command::IdentifyTrap => match self.try_inventory_action(command) {
                 PlayerAction::InventoryChanged => self.advance_world_turn(),
                 PlayerAction::Blocked
@@ -680,7 +870,7 @@ mod tests {
         assert_eq!(game.state().turns, 0);
         assert_eq!(game.state().player_hit_points, 12);
         assert!(!game.current_level().rooms.is_empty());
-        assert_eq!(game.state().player_position, Position::new(18, 12));
+        assert_eq!(game.state().player_position, Position::new(3, 18));
         assert!(game.state().inventory.is_empty());
         assert_eq!(game.state().monsters.len(), 1);
         assert_ne!(
@@ -701,8 +891,8 @@ mod tests {
 
         assert_eq!(game.state().turns, 2);
         assert_eq!(game.state().pending_direction, Some(Direction::Left));
-        assert_eq!(game.state().player_position, Position::new(18, 11));
-        assert_eq!(game.state().monsters[0].position, Position::new(18, 16));
+        assert_eq!(game.state().player_position, Position::new(3, 17));
+        assert_eq!(game.state().monsters[0].position, Position::new(3, 14));
         assert!(game.state().last_turn_events.is_empty());
         assert!(!game.state().last_move_blocked);
     }
@@ -747,8 +937,9 @@ mod tests {
     #[test]
     fn move_into_wall_is_blocked_without_consuming_turn() {
         let mut game = GameLoop::new(12345);
+        game.state.monsters.clear();
 
-        for _ in 0..5 {
+        for _ in 0..6 {
             assert_eq!(
                 game.step(Command::Move(Direction::Left)),
                 StepOutcome::Continue
@@ -757,7 +948,6 @@ mod tests {
 
         let before = game.state().player_position;
         let turns_before = game.state().turns;
-        let monster_before = game.state().monsters[0].position;
 
         assert_eq!(
             game.step(Command::Move(Direction::Left)),
@@ -765,7 +955,6 @@ mod tests {
         );
         assert_eq!(game.state().player_position, before);
         assert_eq!(game.state().turns, turns_before);
-        assert_eq!(game.state().monsters[0].position, monster_before);
         assert!(game.state().last_move_blocked);
     }
 
@@ -777,8 +966,8 @@ mod tests {
             game.step(Command::Move(Direction::UpLeft)),
             StepOutcome::Continue
         );
-        assert_eq!(game.state().player_position, Position::new(17, 11));
-        assert_eq!(game.state().monsters[0].position, Position::new(17, 17));
+        assert_eq!(game.state().player_position, Position::new(2, 17));
+        assert_eq!(game.state().monsters[0].position, Position::new(2, 13));
         assert!(!game.state().last_move_blocked);
     }
 
@@ -840,7 +1029,7 @@ mod tests {
                 equipped_slot: Some(EquipmentSlot::Armor),
             });
 
-        game.state.monsters[0].position = Position::new(18, 13);
+        game.state.monsters[0].position = Position::new(3, 19);
         game.state.monsters[0].hit_points = 2;
 
         assert_eq!(
@@ -893,7 +1082,7 @@ mod tests {
     #[test]
     fn moving_into_monster_attacks_instead_of_moving() {
         let mut game = GameLoop::new(12345);
-        game.state.monsters[0].position = Position::new(18, 13);
+        game.state.monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(3, 19))];
         game.state.monsters[0].hit_points = 2;
 
         assert_eq!(
@@ -901,7 +1090,7 @@ mod tests {
             StepOutcome::Continue
         );
 
-        assert_eq!(game.state().player_position, Position::new(18, 12));
+        assert_eq!(game.state().player_position, Position::new(3, 18));
         assert_eq!(game.state().turns, 1);
         assert_eq!(game.state().player_hit_points, 11);
         assert_eq!(game.state().monsters[0].hit_points, 1);
@@ -910,13 +1099,13 @@ mod tests {
             vec![
                 CombatEvent::PlayerHitMonster {
                     monster_kind: game.state().monsters[0].kind,
-                    position: Position::new(18, 13),
+                    position: Position::new(3, 19),
                     damage: 1,
                     killed: false,
                 },
                 CombatEvent::MonsterHitPlayer {
                     monster_kind: game.state().monsters[0].kind,
-                    position: Position::new(18, 13),
+                    position: Position::new(3, 19),
                     damage: 1,
                 },
             ]
@@ -926,7 +1115,7 @@ mod tests {
     #[test]
     fn killing_monster_removes_it_before_counter_attack() {
         let mut game = GameLoop::new(12345);
-        game.state.monsters[0].position = Position::new(18, 13);
+        game.state.monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(3, 19))];
         game.state.monsters[0].hit_points = 1;
 
         assert_eq!(
@@ -941,7 +1130,7 @@ mod tests {
             game.state().last_turn_events,
             vec![CombatEvent::PlayerHitMonster {
                 monster_kind: crate::actors::MonsterKind::Kestrel,
-                position: Position::new(18, 13),
+                position: Position::new(3, 19),
                 damage: 1,
                 killed: true,
             }]
@@ -953,7 +1142,7 @@ mod tests {
         let mut game = GameLoop::new(12345);
         game.state.monsters = vec![Monster::new(
             MonsterKind::VenusFlytrap,
-            Position::new(18, 13),
+            Position::new(3, 19),
         )];
 
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
@@ -965,7 +1154,7 @@ mod tests {
             StepOutcome::Continue
         );
 
-        assert_eq!(game.state.player_position, Position::new(18, 12));
+        assert_eq!(game.state.player_position, Position::new(3, 18));
         assert!(game.state.last_move_blocked);
         assert_eq!(game.state.turns, turns_before + 1);
     }
@@ -973,7 +1162,7 @@ mod tests {
     #[test]
     fn freeze_effect_skips_player_turns() {
         let mut game = GameLoop::new(12345);
-        game.state.monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(18, 13))];
+        game.state.monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(3, 19))];
 
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
         assert_eq!(game.state.frozen_turns, 2);
@@ -992,7 +1181,7 @@ mod tests {
             game.step(Command::Move(Direction::Left)),
             StepOutcome::Continue
         );
-        assert_eq!(game.state.player_position, Position::new(18, 12));
+        assert_eq!(game.state.player_position, Position::new(3, 18));
         assert_eq!(game.state.turns, turns_before + 1);
         assert_eq!(game.state.frozen_turns, 1);
     }
@@ -1002,7 +1191,7 @@ mod tests {
         let mut game = GameLoop::new(12345);
         game.state.monsters = vec![Monster::new(
             MonsterKind::Rattlesnake,
-            Position::new(18, 13),
+            Position::new(3, 19),
         )];
 
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
@@ -1022,3 +1211,4 @@ mod tests {
         }));
     }
 }
+

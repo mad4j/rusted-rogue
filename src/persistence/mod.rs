@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use crate::actors::{CombatEvent, Monster, MonsterKind, SpecialHit, StatusEffectEvent};
-use crate::core_types::{Position, TileFlags, DCOLS, DROWS};
+use crate::core_types::{Position, TileFlags, TrapKind, DCOLS, DROWS};
 use crate::game_loop::{Command, Direction, GameLoop, GameState};
 use crate::inventory_items::{
     EquipmentSlot, FloorItem, InventoryEntry, InventoryEvent, InventoryItem,
@@ -80,6 +80,13 @@ struct GameStateSnapshot {
     player_position: PositionSnapshot,
     player_hit_points: i16,
     player_max_hit_points: i16,
+    player_strength: i16,
+    player_max_strength: i16,
+    player_exp_points: i64,
+    player_exp_level: i16,
+    food_remaining: i32,
+    is_hungry: bool,
+    is_weak: bool,
     frozen_turns: u8,
     monsters_defeated: u64,
     monsters: Vec<MonsterSnapshot>,
@@ -87,6 +94,7 @@ struct GameStateSnapshot {
     inventory: Vec<InventoryEntrySnapshot>,
     floor_items: Vec<FloorItemSnapshot>,
     trap_positions: Vec<PositionSnapshot>,
+    trap_types: Vec<String>,
     known_traps: Vec<PositionSnapshot>,
     next_item_id: u64,
     last_inventory_events: Vec<InventoryEventSnapshot>,
@@ -114,6 +122,11 @@ enum StatusEffectSnapshot {
     Frozen { turns: u8 },
     Held,
     Stung { max_hit_points_lost: i16 },
+    ArmorRusted,
+    GoldStolen,
+    ItemStolen,
+    LifeDrained { max_hit_points_lost: i16 },
+    LevelDropped,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -419,6 +432,13 @@ impl GameStateSnapshot {
             player_position: PositionSnapshot::from_position(state.player_position),
             player_hit_points: state.player_hit_points,
             player_max_hit_points: state.player_max_hit_points,
+            player_strength: state.player_strength,
+            player_max_strength: state.player_max_strength,
+            player_exp_points: state.player_exp_points,
+            player_exp_level: state.player_exp_level,
+            food_remaining: state.food_remaining,
+            is_hungry: state.is_hungry,
+            is_weak: state.is_weak,
             frozen_turns: state.frozen_turns,
             monsters_defeated: state.monsters_defeated,
             monsters: state
@@ -445,6 +465,11 @@ impl GameStateSnapshot {
                 .trap_positions
                 .iter()
                 .map(|p| PositionSnapshot::from_position(*p))
+                .collect(),
+            trap_types: state
+                .trap_types
+                .iter()
+                .map(|k| trap_kind_to_string(*k).to_string())
                 .collect(),
             known_traps: state
                 .known_traps
@@ -475,6 +500,13 @@ impl GameStateSnapshot {
             player_position: self.player_position.into_position(),
             player_hit_points: self.player_hit_points,
             player_max_hit_points: self.player_max_hit_points,
+            player_strength: self.player_strength,
+            player_max_strength: self.player_max_strength,
+            player_exp_points: self.player_exp_points,
+            player_exp_level: self.player_exp_level,
+            food_remaining: self.food_remaining,
+            is_hungry: self.is_hungry,
+            is_weak: self.is_weak,
             frozen_turns: self.frozen_turns,
             monsters_defeated: self.monsters_defeated,
             monsters: self
@@ -502,6 +534,11 @@ impl GameStateSnapshot {
                 .into_iter()
                 .map(PositionSnapshot::into_position)
                 .collect(),
+            trap_types: self
+                .trap_types
+                .iter()
+                .map(|s| trap_kind_from_string(s))
+                .collect::<io::Result<Vec<_>>>()?,
             known_traps: self
                 .known_traps
                 .into_iter()
@@ -587,6 +624,15 @@ impl CombatEventSnapshot {
                     } => StatusEffectSnapshot::Stung {
                         max_hit_points_lost: *max_hit_points_lost,
                     },
+                    StatusEffectEvent::ArmorRusted => StatusEffectSnapshot::ArmorRusted,
+                    StatusEffectEvent::GoldStolen => StatusEffectSnapshot::GoldStolen,
+                    StatusEffectEvent::ItemStolen => StatusEffectSnapshot::ItemStolen,
+                    StatusEffectEvent::LifeDrained { max_hit_points_lost } => {
+                        StatusEffectSnapshot::LifeDrained {
+                            max_hit_points_lost: *max_hit_points_lost,
+                        }
+                    }
+                    StatusEffectEvent::LevelDropped => StatusEffectSnapshot::LevelDropped,
                 },
             },
         }
@@ -629,6 +675,13 @@ impl CombatEventSnapshot {
                     } => StatusEffectEvent::Stung {
                         max_hit_points_lost,
                     },
+                    StatusEffectSnapshot::ArmorRusted => StatusEffectEvent::ArmorRusted,
+                    StatusEffectSnapshot::GoldStolen => StatusEffectEvent::GoldStolen,
+                    StatusEffectSnapshot::ItemStolen => StatusEffectEvent::ItemStolen,
+                    StatusEffectSnapshot::LifeDrained { max_hit_points_lost } => {
+                        StatusEffectEvent::LifeDrained { max_hit_points_lost }
+                    }
+                    StatusEffectSnapshot::LevelDropped => StatusEffectEvent::LevelDropped,
                 },
             },
         })
@@ -778,19 +831,63 @@ fn direction_from_string(direction: &str) -> io::Result<Direction> {
 
 fn monster_kind_to_string(kind: MonsterKind) -> &'static str {
     match kind {
-        MonsterKind::Kestrel => "Kestrel",
-        MonsterKind::IceMonster => "IceMonster",
+        MonsterKind::Aquator => "Aquator",
+        MonsterKind::Bat => "Bat",
+        MonsterKind::Centaur => "Centaur",
+        MonsterKind::Dragon => "Dragon",
+        MonsterKind::Emu => "Emu",
         MonsterKind::VenusFlytrap => "VenusFlytrap",
+        MonsterKind::Griffin => "Griffin",
+        MonsterKind::Hobgoblin => "Hobgoblin",
+        MonsterKind::IceMonster => "IceMonster",
+        MonsterKind::Jabberwock => "Jabberwock",
+        MonsterKind::Kestrel => "Kestrel",
+        MonsterKind::Leprechaun => "Leprechaun",
+        MonsterKind::Medusa => "Medusa",
+        MonsterKind::Nymph => "Nymph",
+        MonsterKind::Orc => "Orc",
+        MonsterKind::Phantom => "Phantom",
+        MonsterKind::Quagga => "Quagga",
         MonsterKind::Rattlesnake => "Rattlesnake",
+        MonsterKind::Snake => "Snake",
+        MonsterKind::Troll => "Troll",
+        MonsterKind::BlackUnicorn => "BlackUnicorn",
+        MonsterKind::Vampire => "Vampire",
+        MonsterKind::Wraith => "Wraith",
+        MonsterKind::Xeroc => "Xeroc",
+        MonsterKind::Yeti => "Yeti",
+        MonsterKind::Zombie => "Zombie",
     }
 }
 
 fn monster_kind_from_string(kind: &str) -> io::Result<MonsterKind> {
     match kind {
-        "Kestrel" => Ok(MonsterKind::Kestrel),
-        "IceMonster" => Ok(MonsterKind::IceMonster),
+        "Aquator" => Ok(MonsterKind::Aquator),
+        "Bat" => Ok(MonsterKind::Bat),
+        "Centaur" => Ok(MonsterKind::Centaur),
+        "Dragon" => Ok(MonsterKind::Dragon),
+        "Emu" => Ok(MonsterKind::Emu),
         "VenusFlytrap" => Ok(MonsterKind::VenusFlytrap),
+        "Griffin" => Ok(MonsterKind::Griffin),
+        "Hobgoblin" => Ok(MonsterKind::Hobgoblin),
+        "IceMonster" => Ok(MonsterKind::IceMonster),
+        "Jabberwock" => Ok(MonsterKind::Jabberwock),
+        "Kestrel" => Ok(MonsterKind::Kestrel),
+        "Leprechaun" => Ok(MonsterKind::Leprechaun),
+        "Medusa" => Ok(MonsterKind::Medusa),
+        "Nymph" => Ok(MonsterKind::Nymph),
+        "Orc" => Ok(MonsterKind::Orc),
+        "Phantom" => Ok(MonsterKind::Phantom),
+        "Quagga" => Ok(MonsterKind::Quagga),
         "Rattlesnake" => Ok(MonsterKind::Rattlesnake),
+        "Snake" => Ok(MonsterKind::Snake),
+        "Troll" => Ok(MonsterKind::Troll),
+        "BlackUnicorn" => Ok(MonsterKind::BlackUnicorn),
+        "Vampire" => Ok(MonsterKind::Vampire),
+        "Wraith" => Ok(MonsterKind::Wraith),
+        "Xeroc" => Ok(MonsterKind::Xeroc),
+        "Yeti" => Ok(MonsterKind::Yeti),
+        "Zombie" => Ok(MonsterKind::Zombie),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unknown monster kind in save: {kind}"),
@@ -803,6 +900,11 @@ fn special_hit_to_string(hit: SpecialHit) -> &'static str {
         SpecialHit::Freeze => "Freeze",
         SpecialHit::Hold => "Hold",
         SpecialHit::Sting => "Sting",
+        SpecialHit::Rusts => "Rusts",
+        SpecialHit::StealsGold => "StealsGold",
+        SpecialHit::StealsItem => "StealsItem",
+        SpecialHit::DrainsLife => "DrainsLife",
+        SpecialHit::DropsLevel => "DropsLevel",
     }
 }
 
@@ -811,9 +913,40 @@ fn special_hit_from_string(hit: &str) -> io::Result<SpecialHit> {
         "Freeze" => Ok(SpecialHit::Freeze),
         "Hold" => Ok(SpecialHit::Hold),
         "Sting" => Ok(SpecialHit::Sting),
+        "Rusts" => Ok(SpecialHit::Rusts),
+        "StealsGold" => Ok(SpecialHit::StealsGold),
+        "StealsItem" => Ok(SpecialHit::StealsItem),
+        "DrainsLife" => Ok(SpecialHit::DrainsLife),
+        "DropsLevel" => Ok(SpecialHit::DropsLevel),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unknown special hit in save: {hit}"),
+        )),
+    }
+}
+
+fn trap_kind_to_string(kind: TrapKind) -> &'static str {
+    match kind {
+        TrapKind::TrapDoor => "trap_door",
+        TrapKind::BearTrap => "bear_trap",
+        TrapKind::TeleTrap => "tele_trap",
+        TrapKind::DartTrap => "dart_trap",
+        TrapKind::SleepingGasTrap => "sleeping_gas_trap",
+        TrapKind::RustTrap => "rust_trap",
+    }
+}
+
+fn trap_kind_from_string(kind: &str) -> io::Result<TrapKind> {
+    match kind {
+        "trap_door" => Ok(TrapKind::TrapDoor),
+        "bear_trap" => Ok(TrapKind::BearTrap),
+        "tele_trap" => Ok(TrapKind::TeleTrap),
+        "dart_trap" => Ok(TrapKind::DartTrap),
+        "sleeping_gas_trap" => Ok(TrapKind::SleepingGasTrap),
+        "rust_trap" => Ok(TrapKind::RustTrap),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unknown trap kind in save: {kind}"),
         )),
     }
 }
