@@ -1022,3 +1022,54 @@ mod tests {
         }));
     }
 }
+
+#[cfg(test)]
+mod debug_positions {
+    use super::{Command, Direction, GameLoop};
+
+    #[test]
+    fn print_seed_12345_positions() {
+        let mut game = GameLoop::new(12345);
+        eprintln!("spawn: {:?}", game.state().player_position);
+        eprintln!("monster[0]: {:?}", game.state().monsters[0].position);
+        eprintln!("trap_positions: {:?}", game.state().trap_positions);
+        
+        let _ = game.step(Command::Rest);
+        eprintln!("after rest - monster: {:?}", game.state().monsters[0].position);
+        
+        let _ = game.step(Command::Move(Direction::Left));
+        eprintln!("after move_left - player: {:?}", game.state().player_position);
+        eprintln!("after move_left - monster: {:?}", game.state().monsters[0].position);
+    }
+}
+
+#[cfg(test)]
+mod debug_positions2 {
+    use super::{Command, Direction, GameLoop};
+    use crate::core_types::Position;
+
+    #[test]
+    fn print_more_positions() {
+        // Test diagonal and wall
+        let mut game = GameLoop::new(12345);
+        eprintln!("spawn: {:?}", game.state().player_position);
+        
+        let _ = game.step(Command::Move(Direction::UpLeft));
+        eprintln!("after UpLeft: {:?}", game.state().player_position);
+        eprintln!("monster after UpLeft: {:?}", game.state().monsters[0].position);
+        eprintln!("blocked: {}", game.state().last_move_blocked);
+        
+        // Reset and test wall
+        let mut game2 = GameLoop::new(12345);
+        for i in 0..8 {
+            let _ = game2.step(Command::Move(Direction::Left));
+            eprintln!("after {} lefts: {:?} (blocked: {})", i+1, game2.state().player_position, game2.state().last_move_blocked);
+        }
+        
+        // Check trap adjacency
+        let mut game3 = GameLoop::new(12345);
+        let trap = game3.state().trap_positions[0];
+        let player = game3.state().player_position;
+        eprintln!("trap: {:?}, player: {:?}, is_adjacent: {}", trap, player, super::is_adjacent(trap, player));
+    }
+}
