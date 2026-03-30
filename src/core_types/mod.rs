@@ -10,6 +10,37 @@ pub const ROW2: i16 = 15;
 pub const COL1: i16 = 26;
 pub const COL2: i16 = 52;
 
+pub const INIT_STRENGTH: i16 = 16;
+pub const INIT_FOOD: i32 = 300;
+
+pub const EXP_LEVELS: [i64; 21] = [
+    10, 20, 40, 80, 160, 320, 640, 1300, 2600, 5200, 10000,
+    20000, 40000, 80000, 160000, 320000, 1000000, 3333333, 6666666, 9999999, i64::MAX,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrapKind {
+    TrapDoor,
+    BearTrap,
+    TeleTrap,
+    DartTrap,
+    SleepingGasTrap,
+    RustTrap,
+}
+
+impl TrapKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            TrapKind::TrapDoor => "trap door",
+            TrapKind::BearTrap => "bear trap",
+            TrapKind::TeleTrap => "teleport trap",
+            TrapKind::DartTrap => "dart trap",
+            TrapKind::SleepingGasTrap => "sleeping gas trap",
+            TrapKind::RustTrap => "rust trap",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Position {
     pub row: i16,

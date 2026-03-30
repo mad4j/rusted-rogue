@@ -168,17 +168,24 @@ fn render_tile(tile: TileFlags) -> char {
 }
 
 fn render_status(game: &GameLoop) -> String {
+    let hunger = if game.state().is_weak {
+        " [WEAK]"
+    } else if game.state().is_hungry {
+        " [HUNGRY]"
+    } else {
+        ""
+    };
     format!(
-        "Level:{} Turns:{} HP:{}/{} Defeated:{} Inv:{} Monsters:{} Frozen:{}{}",
+        "Level:{} Exp:{}({}) HP:{}/{} Str:{}{} Inv:{} Turns:{}",
         game.state().level,
-        game.state().turns,
+        game.state().player_exp_points,
+        game.state().player_exp_level,
         game.state().player_hit_points,
         game.state().player_max_hit_points,
-        game.state().monsters_defeated,
+        game.state().player_strength,
+        hunger,
         game.state().inventory.len(),
-        game.state().monsters.len(),
-        game.state().frozen_turns,
-        if game.player_is_held() { " held" } else { "" },
+        game.state().turns,
     )
 }
 
