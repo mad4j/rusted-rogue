@@ -114,6 +114,11 @@ enum StatusEffectSnapshot {
     Frozen { turns: u8 },
     Held,
     Stung { max_hit_points_lost: i16 },
+    ArmorRusted,
+    GoldStolen,
+    ItemStolen,
+    LifeDrained { max_hit_points_lost: i16 },
+    LevelDropped,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -587,6 +592,15 @@ impl CombatEventSnapshot {
                     } => StatusEffectSnapshot::Stung {
                         max_hit_points_lost: *max_hit_points_lost,
                     },
+                    StatusEffectEvent::ArmorRusted => StatusEffectSnapshot::ArmorRusted,
+                    StatusEffectEvent::GoldStolen => StatusEffectSnapshot::GoldStolen,
+                    StatusEffectEvent::ItemStolen => StatusEffectSnapshot::ItemStolen,
+                    StatusEffectEvent::LifeDrained { max_hit_points_lost } => {
+                        StatusEffectSnapshot::LifeDrained {
+                            max_hit_points_lost: *max_hit_points_lost,
+                        }
+                    }
+                    StatusEffectEvent::LevelDropped => StatusEffectSnapshot::LevelDropped,
                 },
             },
         }
@@ -629,6 +643,13 @@ impl CombatEventSnapshot {
                     } => StatusEffectEvent::Stung {
                         max_hit_points_lost,
                     },
+                    StatusEffectSnapshot::ArmorRusted => StatusEffectEvent::ArmorRusted,
+                    StatusEffectSnapshot::GoldStolen => StatusEffectEvent::GoldStolen,
+                    StatusEffectSnapshot::ItemStolen => StatusEffectEvent::ItemStolen,
+                    StatusEffectSnapshot::LifeDrained { max_hit_points_lost } => {
+                        StatusEffectEvent::LifeDrained { max_hit_points_lost }
+                    }
+                    StatusEffectSnapshot::LevelDropped => StatusEffectEvent::LevelDropped,
                 },
             },
         })
@@ -778,19 +799,63 @@ fn direction_from_string(direction: &str) -> io::Result<Direction> {
 
 fn monster_kind_to_string(kind: MonsterKind) -> &'static str {
     match kind {
-        MonsterKind::Kestrel => "Kestrel",
-        MonsterKind::IceMonster => "IceMonster",
+        MonsterKind::Aquator => "Aquator",
+        MonsterKind::Bat => "Bat",
+        MonsterKind::Centaur => "Centaur",
+        MonsterKind::Dragon => "Dragon",
+        MonsterKind::Emu => "Emu",
         MonsterKind::VenusFlytrap => "VenusFlytrap",
+        MonsterKind::Griffin => "Griffin",
+        MonsterKind::Hobgoblin => "Hobgoblin",
+        MonsterKind::IceMonster => "IceMonster",
+        MonsterKind::Jabberwock => "Jabberwock",
+        MonsterKind::Kestrel => "Kestrel",
+        MonsterKind::Leprechaun => "Leprechaun",
+        MonsterKind::Medusa => "Medusa",
+        MonsterKind::Nymph => "Nymph",
+        MonsterKind::Orc => "Orc",
+        MonsterKind::Phantom => "Phantom",
+        MonsterKind::Quagga => "Quagga",
         MonsterKind::Rattlesnake => "Rattlesnake",
+        MonsterKind::Snake => "Snake",
+        MonsterKind::Troll => "Troll",
+        MonsterKind::BlackUnicorn => "BlackUnicorn",
+        MonsterKind::Vampire => "Vampire",
+        MonsterKind::Wraith => "Wraith",
+        MonsterKind::Xeroc => "Xeroc",
+        MonsterKind::Yeti => "Yeti",
+        MonsterKind::Zombie => "Zombie",
     }
 }
 
 fn monster_kind_from_string(kind: &str) -> io::Result<MonsterKind> {
     match kind {
-        "Kestrel" => Ok(MonsterKind::Kestrel),
-        "IceMonster" => Ok(MonsterKind::IceMonster),
+        "Aquator" => Ok(MonsterKind::Aquator),
+        "Bat" => Ok(MonsterKind::Bat),
+        "Centaur" => Ok(MonsterKind::Centaur),
+        "Dragon" => Ok(MonsterKind::Dragon),
+        "Emu" => Ok(MonsterKind::Emu),
         "VenusFlytrap" => Ok(MonsterKind::VenusFlytrap),
+        "Griffin" => Ok(MonsterKind::Griffin),
+        "Hobgoblin" => Ok(MonsterKind::Hobgoblin),
+        "IceMonster" => Ok(MonsterKind::IceMonster),
+        "Jabberwock" => Ok(MonsterKind::Jabberwock),
+        "Kestrel" => Ok(MonsterKind::Kestrel),
+        "Leprechaun" => Ok(MonsterKind::Leprechaun),
+        "Medusa" => Ok(MonsterKind::Medusa),
+        "Nymph" => Ok(MonsterKind::Nymph),
+        "Orc" => Ok(MonsterKind::Orc),
+        "Phantom" => Ok(MonsterKind::Phantom),
+        "Quagga" => Ok(MonsterKind::Quagga),
         "Rattlesnake" => Ok(MonsterKind::Rattlesnake),
+        "Snake" => Ok(MonsterKind::Snake),
+        "Troll" => Ok(MonsterKind::Troll),
+        "BlackUnicorn" => Ok(MonsterKind::BlackUnicorn),
+        "Vampire" => Ok(MonsterKind::Vampire),
+        "Wraith" => Ok(MonsterKind::Wraith),
+        "Xeroc" => Ok(MonsterKind::Xeroc),
+        "Yeti" => Ok(MonsterKind::Yeti),
+        "Zombie" => Ok(MonsterKind::Zombie),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unknown monster kind in save: {kind}"),
@@ -803,6 +868,11 @@ fn special_hit_to_string(hit: SpecialHit) -> &'static str {
         SpecialHit::Freeze => "Freeze",
         SpecialHit::Hold => "Hold",
         SpecialHit::Sting => "Sting",
+        SpecialHit::Rusts => "Rusts",
+        SpecialHit::StealsGold => "StealsGold",
+        SpecialHit::StealsItem => "StealsItem",
+        SpecialHit::DrainsLife => "DrainsLife",
+        SpecialHit::DropsLevel => "DropsLevel",
     }
 }
 
@@ -811,6 +881,11 @@ fn special_hit_from_string(hit: &str) -> io::Result<SpecialHit> {
         "Freeze" => Ok(SpecialHit::Freeze),
         "Hold" => Ok(SpecialHit::Hold),
         "Sting" => Ok(SpecialHit::Sting),
+        "Rusts" => Ok(SpecialHit::Rusts),
+        "StealsGold" => Ok(SpecialHit::StealsGold),
+        "StealsItem" => Ok(SpecialHit::StealsItem),
+        "DrainsLife" => Ok(SpecialHit::DrainsLife),
+        "DropsLevel" => Ok(SpecialHit::DropsLevel),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unknown special hit in save: {hit}"),

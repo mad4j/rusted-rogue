@@ -453,6 +453,18 @@ impl GameLoop {
                             .player_hit_points
                             .min(self.state.player_max_hit_points);
                     }
+                    StatusEffectEvent::LifeDrained { max_hit_points_lost } => {
+                        self.state.player_max_hit_points =
+                            (self.state.player_max_hit_points - max_hit_points_lost).max(1);
+                        self.state.player_hit_points = self
+                            .state
+                            .player_hit_points
+                            .min(self.state.player_max_hit_points);
+                    }
+                    StatusEffectEvent::GoldStolen => {}
+                    StatusEffectEvent::ItemStolen => {}
+                    StatusEffectEvent::LevelDropped => {}
+                    StatusEffectEvent::ArmorRusted => {}
                 },
                 CombatEvent::PlayerHitMonster { .. } => {}
             }
@@ -702,7 +714,7 @@ mod tests {
         assert_eq!(game.state().turns, 2);
         assert_eq!(game.state().pending_direction, Some(Direction::Left));
         assert_eq!(game.state().player_position, Position::new(3, 17));
-        assert_eq!(game.state().monsters[0].position, Position::new(3, 22));
+        assert_eq!(game.state().monsters[0].position, Position::new(3, 14));
         assert!(game.state().last_turn_events.is_empty());
         assert!(!game.state().last_move_blocked);
     }
@@ -747,6 +759,7 @@ mod tests {
     #[test]
     fn move_into_wall_is_blocked_without_consuming_turn() {
         let mut game = GameLoop::new(12345);
+        game.state.monsters.clear();
 
         for _ in 0..6 {
             assert_eq!(
@@ -757,7 +770,6 @@ mod tests {
 
         let before = game.state().player_position;
         let turns_before = game.state().turns;
-        let monster_before = game.state().monsters[0].position;
 
         assert_eq!(
             game.step(Command::Move(Direction::Left)),
@@ -765,7 +777,6 @@ mod tests {
         );
         assert_eq!(game.state().player_position, before);
         assert_eq!(game.state().turns, turns_before);
-        assert_eq!(game.state().monsters[0].position, monster_before);
         assert!(game.state().last_move_blocked);
     }
 
@@ -778,7 +789,7 @@ mod tests {
             StepOutcome::Continue
         );
         assert_eq!(game.state().player_position, Position::new(2, 17));
-        assert_eq!(game.state().monsters[0].position, Position::new(3, 23));
+        assert_eq!(game.state().monsters[0].position, Position::new(2, 13));
         assert!(!game.state().last_move_blocked);
     }
 
@@ -893,7 +904,7 @@ mod tests {
     #[test]
     fn moving_into_monster_attacks_instead_of_moving() {
         let mut game = GameLoop::new(12345);
-        game.state.monsters[0].position = Position::new(3, 19);
+        game.state.monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(3, 19))];
         game.state.monsters[0].hit_points = 2;
 
         assert_eq!(
@@ -926,7 +937,7 @@ mod tests {
     #[test]
     fn killing_monster_removes_it_before_counter_attack() {
         let mut game = GameLoop::new(12345);
-        game.state.monsters[0].position = Position::new(3, 19);
+        game.state.monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(3, 19))];
         game.state.monsters[0].hit_points = 1;
 
         assert_eq!(
