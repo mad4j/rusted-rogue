@@ -74,7 +74,7 @@ fn render(stdout: &mut Stdout, game: &GameLoop) -> io::Result<()> {
         Print(render_last_message(game)),
         MoveTo(0, (DROWS + 2) as u16),
         Clear(ClearType::CurrentLine),
-        Print("Keys: hjkl yubn/arrows move, . rest, , pick up, d drop, w wield, W wear, T take off, P put ring, R remove ring, q quaff, z zap, t throw, ^ identify trap, Q quit"),
+        Print("Keys: hjkl yubn/arrows move, . rest, , pick up, d drop, w wield, W wear, T take off, P put ring, R remove ring, q quaff, z zap, t throw, r read, e eat, ^ identify trap, Q quit"),
     )?;
 
     stdout.flush()
@@ -130,6 +130,8 @@ impl RenderLookups {
                     ItemCategory::Ring => '=',
                     ItemCategory::Potion => '!',
                     ItemCategory::Wand => '/',
+                    ItemCategory::Scroll => '?',
+                    ItemCategory::Food => '%',
                 };
                 (floor_item.position, ch)
             })

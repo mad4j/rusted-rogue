@@ -40,6 +40,8 @@ pub enum Command {
     Quaff,
     Zap,
     Throw,
+    ReadScroll,
+    Eat,
     IdentifyTrap,
     Save,
     Load,
@@ -183,6 +185,8 @@ impl GameLoop {
             'q' => Command::Quaff,
             'z' => Command::Zap,
             't' => Command::Throw,
+            'r' => Command::ReadScroll,
+            'e' => Command::Eat,
             '^' => Command::IdentifyTrap,
             'S' => Command::Save,
             'L' => Command::Load,
@@ -278,9 +282,74 @@ impl GameLoop {
             Command::Quaff => {
                 remove_first_item_by_category(&mut self.state.inventory, ItemCategory::Potion).map(
                     |entry| {
-                        self.state.player_hit_points = (self.state.player_hit_points + 4)
-                            .min(self.state.player_max_hit_points);
-                        self.state.last_system_message = Some("You feel better.".to_string());
+                        let msg = match entry.item.name {
+                            "healing potion" => {
+                                self.state.player_hit_points = (self.state.player_hit_points + 4)
+                                    .min(self.state.player_max_hit_points);
+                                "You feel better."
+                            }
+                            "potion of extra healing" => {
+                                self.state.player_hit_points = (self.state.player_hit_points + 8)
+                                    .min(self.state.player_max_hit_points);
+                                "You feel much better."
+                            }
+                            "potion of increase strength" => "You feel stronger.",
+                            "potion of restore strength" => "You feel your strength return.",
+                            "potion of poison" => "You feel very sick.",
+                            "potion of raise level" => "You feel more experienced.",
+                            "potion of blindness" => "A cloud of darkness surrounds you.",
+                            "potion of hallucination" => "Oh wow, everything seems so cosmic!",
+                            "potion of detect monster" => "You sense the presence of monsters.",
+                            "potion of detect objects" => "You sense the presence of objects.",
+                            "potion of confusion" => "You feel confused.",
+                            "potion of levitation" => "You start to float in the air.",
+                            "potion of haste self" => "You feel yourself moving faster.",
+                            "potion of see invisible" => "Your vision becomes clear.",
+                            _ => "You drink the potion.",
+                        };
+                        self.state.last_system_message = Some(msg.to_string());
+                        vec![InventoryEvent::Used {
+                            name: entry.item.name,
+                        }]
+                    },
+                )
+            }
+            Command::ReadScroll => {
+                remove_first_item_by_category(&mut self.state.inventory, ItemCategory::Scroll).map(
+                    |entry| {
+                        let msg = match entry.item.name {
+                            "scroll of protect armor" => "Your armor glows faintly.",
+                            "scroll of hold monster" => "The monsters are frozen.",
+                            "scroll of enchant weapon" => "Your weapon glows blue.",
+                            "scroll of enchant armor" => "Your armor glows silver.",
+                            "scroll of identify" => "You can identify this item.",
+                            "scroll of teleport" => "You suddenly find yourself somewhere else.",
+                            "scroll of sleep" => "You fall asleep.",
+                            "scroll of scare monster" => "The monsters flee.",
+                            "scroll of remove curse" => {
+                                "You feel as if someone is watching over you."
+                            }
+                            "scroll of create monster" => "You hear a faint cry in the distance.",
+                            "scroll of aggravate monster" => {
+                                "You hear a high pitched humming noise."
+                            }
+                            "scroll of magic mapping" => {
+                                "You feel a sense of the dungeon around you."
+                            }
+                            _ => "You read the scroll.",
+                        };
+                        self.state.last_system_message = Some(msg.to_string());
+                        vec![InventoryEvent::Used {
+                            name: entry.item.name,
+                        }]
+                    },
+                )
+            }
+            Command::Eat => {
+                remove_first_item_by_category(&mut self.state.inventory, ItemCategory::Food).map(
+                    |entry| {
+                        self.state.last_system_message =
+                            Some("Yum, that tasted good.".to_string());
                         vec![InventoryEvent::Used {
                             name: entry.item.name,
                         }]
@@ -571,6 +640,8 @@ impl GameLoop {
             | Command::Quaff
             | Command::Zap
             | Command::Throw
+            | Command::ReadScroll
+            | Command::Eat
             | Command::IdentifyTrap => match self.try_inventory_action(command) {
                 PlayerAction::InventoryChanged => self.advance_world_turn(),
                 PlayerAction::Blocked
