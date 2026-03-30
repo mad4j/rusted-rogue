@@ -603,4 +603,96 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn aquator_emits_armor_rusted_event() {
+        let mut rng = GameRng::new(12345);
+        let level = generate_level(&mut rng);
+        let player_position = level.spawn_position();
+        let mut monsters = vec![Monster::new(MonsterKind::Aquator, Position::new(3, 19))];
+
+        let events = tick_monsters(&mut monsters, &level, player_position);
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CombatEvent::MonsterAppliedEffect {
+                effect: StatusEffectEvent::ArmorRusted,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn vampire_emits_life_drained_event() {
+        let mut rng = GameRng::new(12345);
+        let level = generate_level(&mut rng);
+        let player_position = level.spawn_position();
+        let mut monsters = vec![Monster::new(MonsterKind::Vampire, Position::new(3, 19))];
+
+        let events = tick_monsters(&mut monsters, &level, player_position);
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CombatEvent::MonsterAppliedEffect {
+                effect: StatusEffectEvent::LifeDrained {
+                    max_hit_points_lost: 2
+                },
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn leprechaun_emits_gold_stolen_event() {
+        let mut rng = GameRng::new(12345);
+        let level = generate_level(&mut rng);
+        let player_position = level.spawn_position();
+        let mut monsters = vec![Monster::new(MonsterKind::Leprechaun, Position::new(3, 19))];
+
+        let events = tick_monsters(&mut monsters, &level, player_position);
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CombatEvent::MonsterAppliedEffect {
+                effect: StatusEffectEvent::GoldStolen,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn nymph_emits_item_stolen_event() {
+        let mut rng = GameRng::new(12345);
+        let level = generate_level(&mut rng);
+        let player_position = level.spawn_position();
+        let mut monsters = vec![Monster::new(MonsterKind::Nymph, Position::new(3, 19))];
+
+        let events = tick_monsters(&mut monsters, &level, player_position);
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CombatEvent::MonsterAppliedEffect {
+                effect: StatusEffectEvent::ItemStolen,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn wraith_emits_level_dropped_event() {
+        let mut rng = GameRng::new(12345);
+        let level = generate_level(&mut rng);
+        let player_position = level.spawn_position();
+        let mut monsters = vec![Monster::new(MonsterKind::Wraith, Position::new(3, 19))];
+
+        let events = tick_monsters(&mut monsters, &level, player_position);
+
+        assert!(events.iter().any(|e| matches!(
+            e,
+            CombatEvent::MonsterAppliedEffect {
+                effect: StatusEffectEvent::LevelDropped,
+                ..
+            }
+        )));
+    }
 }
