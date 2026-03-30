@@ -1,269 +1,137 @@
-# Analisi Generatore di Mappe: C vs Rust
+# Gap Analysis Map Generator: Rust vs Rogue C (Aggiornata)
 
-## Eseguibile Creato ✅
+Data analisi: 2026-03-30
 
-Nuovo binario: `map_viewer` (in `src/bin/map_viewer.rs`)
+## Sintesi Esecutiva
 
-**Utilizzo:**
+La versione Rust attuale ha gia implementato la parte strutturale principale della generazione (griglia 3x3, room slot, corridoi, maze depth-aware, cross-slot e fill dei vuoti), quindi il documento precedente non e piu valido.
+
+Il gap residuo non e su "esistenza delle feature", ma su fedelta comportamentale rispetto a `level.c`.
+
+Stima di parita attuale (solo map generation): ~70-80%.
+
+## Stato Attuale in Rust
+
+Implementato in `src/world_gen/mod.rs`:
+
+- Generazione stanza per slot 3x3 con vincolo di 3 slot obbligatori (`required_room_group`).
+- Connessione stanze con porte + corridoio a L (`connect_rooms`, `draw_simple_passage`).
+- Maze sui livelli profondi con formula legacy della probabilita (`add_mazes`, `maze_percent_for_level`).
+- Fill delle aree "Nothing/Cross" con tunnel di dead-end (`fill_out_level`).
+- Test di coerenza/determinismo/proprieta (reachability, dead-end, depth->tunnel).
+
+## Gap Reali vs C Originale
+
+Riferimento C: `original/rogue-libc5-ncurses/rogue/level.c`
+
+1. Ordine di connessione stanze non allineato
+- C usa `mix_random_rooms()` e interrompe quando `is_all_connected()` diventa vero.
+- Rust connette in ordine fisso `0..8`, senza break anticipato per connettivita globale.
+- Impatto: distribuzione topologica dei corridoi diversa da quella legacy.
+
+2. Assenza metadati porta->stanza
+- C mantiene `rooms[].doors[]` con `oth_room/oth_row/oth_col`.
+- Rust disegna porte sul grid ma non conserva grafo porte/stanze.
+- Impatto: comportamenti futuri dipendenti da porte (AI, pathing, room wakeup) non allineabili 1:1.
+
+3. Big Room non implementata
+- C attiva `BIG_ROOM` quando `cur_level == party_counter` con probabilita 1%.
+- Rust non ha il ramo big-room nella generazione.
+- Impatto: manca una variante rara ma iconica del layout.
+
+4. Maze algorithm differente
+- C usa `make_maze()` ricorsiva con vincoli locali su celle adiacenti.
+- Rust usa DFS iterativo a step 2.
+- Impatto: densita e pattern dei maze non identici a seed parita.
+
+5. Fill/dead-end semplificato
+- C usa `fill_it`, `recursive_deadend`, `mask_room`, coin toss, e pass secondario `r_de`.
+- Rust usa una versione semplificata a singolo collegamento e fallback.
+- Impatto: minor varianza nella forma dei rami ciechi.
+
+6. Hidden passages/doors non applicati come in C
+- C applica `HIDDEN` su porte e tunnel (`put_door`, `hide_boxed_passage`) con condizioni di livello.
+- Rust espone `TileFlags::HIDDEN` ma la logica equivalente non e completa nella pipeline map-gen.
+- Impatto: differenza su visibilita/esplorazione.
+
+7. Compatibilita room-connection con slot maze
+- In C, `connect_rooms` opera su `R_ROOM | R_MAZE`.
+- In Rust, `connect_rooms` opera su `Option<Room>` (quindi room-room), mentre i collegamenti verso slot non-room sono gestiti in `fill_out_level`.
+- Impatto: meccanica simile ma non equivalente nella sequenza di connessione.
+
+## Passi Implementativi per Coprire il Gap
+
+### Fase 1: Allineamento topologia connessioni (alta priorita)
+
+1. Introdurre `random_rooms` e shuffle legacy-compatible prima delle connessioni principali.
+2. Eseguire il loop connessioni su ordine mescolato (come C).
+3. Implementare `is_all_connected()` lato Rust (BFS su room centers o su grafo slot).
+4. Interrompere il loop connessioni quando il livello e connesso.
+
+Criterio di accettazione:
+- Seed window (es. 0..1024) con media componenti connesse e numero corridoi piu vicine al C baseline.
+
+### Fase 2: Big Room e varianti strutturali
+
+1. Introdurre un ramo opzionale `big_room` in `generate_level_with_depth` con probabilita/condizione configurabile.
+2. Parametrizzare la condizione in modo da poterla guidare dai futuri state variables (equivalente di `party_counter`).
+3. Aggiungere test dedicato che forzi la branch big-room (feature flag o RNG stub).
+
+Criterio di accettazione:
+- Possibilita di produrre layout big-room in test deterministici.
+
+### Fase 3: Metadati porte/stanze
+
+1. Estendere modello room con `doors[4]` (o struttura equivalente Rust-safe).
+2. Salvare `door_row/door_col` e mapping verso stanza opposta in `connect_rooms`.
+3. Aggiornare serializzazione/persistenza se necessario.
+
+Criterio di accettazione:
+- Invariant: per ogni connessione A->B esiste il reverse B->A coerente.
+
+### Fase 4: Fill/dead-end parity
+
+1. Portare `mask_room` per scegliere start point da tunnel gia presente quando opportuno.
+2. Portare la logica `recursive_deadend` con `did_this`, `rooms_found`, `coin_toss` e pass secondario.
+3. Mantenere il comportamento attuale dietro feature flag finche non si valida la parity.
+
+Criterio di accettazione:
+- Distribuzione lunghezza dead-end e branching factor simile al C su seed window condivisa.
+
+### Fase 5: Maze parity e hidden logic
+
+1. Aggiungere un percorso "strict_legacy_maze" che replica `make_maze` (ricorsiva + stesse guardie locali).
+2. Portare `hide_boxed_passage` e hidden door policy con soglia livello.
+3. Validare che il conteggio tile `HIDDEN` rientri in intervalli attesi.
+
+Criterio di accettazione:
+- Statistiche maze/hidden comparabili con baseline C (non per-cell equality, ma distribuzioni).
+
+### Fase 6: Golden parity harness
+
+1. Estendere harness in `automation/harness` per confrontare metriche aggregate C vs Rust su N seed.
+2. Tracciare almeno: numero room, numero maze slot, numero tunnel, numero door, componenti connesse, dead-end count, hidden count.
+3. Definire soglie accettabili e fail CI se fuori soglia.
+
+Criterio di accettazione:
+- Report automatico di regressione parity ad ogni modifica di map generation.
+
+## Ordine Raccomandato di Esecuzione
+
+1. Fase 1 (topologia connessioni)
+2. Fase 3 (metadati porte)
+3. Fase 4 (fill/dead-end)
+4. Fase 5 (maze strict + hidden)
+5. Fase 2 (big-room, dipende da game state)
+6. Fase 6 (harness definitivo)
+
+Motivo: prima si allinea il backbone del grafo, poi i dettagli di varianza layout.
+
+## Comandi Utili
+
 ```bash
-cargo run --bin map_viewer [seed] [num_levels]
+cargo test world_gen -- --nocapture
+cargo run --bin map_viewer 12345 5
 ```
 
-**Esempi:**
-```bash
-cargo run --bin map_viewer              # default: seed=42, levels=1
-cargo run --bin map_viewer 12345        # seed=12345, levels=1
-cargo run --bin map_viewer 42 5         # seed=42, levels=5
-```
-
----
-
-## Comparativa Dettagliata: C vs Rust
-
-### 1. ALGORITMO DI GENERAZIONE
-
-#### C (level.c) - COMPLETO
-```c
-make_level() {
-  // 1. Genera 9 stanze in griglia 3x3 predefinita
-  // 2. Aggiunge labirinti casuali (add_mazes)
-  // 3. Mescola stanze casualmente (mix_random_rooms)
-  // 4. Connette stanze adiacenti in griglia
-  //    - Connessione orizzontale (i a i+1)
-  //    - Connessione verticale (i a i+3)
-  //    - Connessioni diagonali (i a i+2, i a i+6)
-  // 5. Riempie aree vuote (fill_out_level)
-  // 6. Aggiunge dead ends ricorsivi
-}
-```
-
-**Stanze predefinite (3x3 grid):**
-- Stanza 0,1,2: riga superiore
-- Stanza 3,4,5: riga centrale
-- Stanza 6,7,8: riga inferiore
-
-#### Rust (world_gen/mod.rs) - SEMPLIFICATO ❌
-```rust
-pub fn generate_level(rng: &mut GameRng) -> GeneratedLevel {
-  // 1. Genera UNA SOLA stanza rettangolare
-  // 2. NO labirinti
-  // 3. NO corridoi
-  // 4. NO dead ends
-  // 5. Commento: "Minimal deterministic generation for BL-011"
-}
-```
-
-### 2. DIMENSIONI STANZE
-
-| Aspetto | C Original | Rust Actual | MATCH? |
-|---------|-----------|------------|--------|
-| Numero stanze | 9 | 1 | ❌ NO |
-| Disposizione | Griglia 3x3 | Casuale | ❌ NO |
-| Dimensioni | Predefinite per slot | Randomiche | ❌ PARZIALE |
-| Bordi | Muri fissi | Muri fissi | ✅ SÌ |
-| Numero corridoi | 4-8 per livello | 0 | ❌ NO |
-
-### 3. STRUTTURE DATI
-
-#### C
-```c
-struct room {
-    char is_room;           // R_ROOM, R_MAZE, R_CROSS, R_DEADEND, R_NOTHING
-    short top_row, bottom_row;
-    short left_col, right_col;
-    struct door {
-        short oth_room;     // Stanza connessa
-        short oth_row, oth_col;
-        short door_row, door_col;
-    } doors[4];             // UP, DOWN, LEFT, RIGHT
-};
-```
-
-#### Rust
-```rust
-pub struct Room {
-    pub top_row: i16,
-    pub bottom_row: i16,
-    pub left_col: i16,
-    pub right_col: i16,
-}
-// NO: connessioni inter-stanze
-// NO: tipo stanza (room/maze/etc)
-// NO: porte con coordinate
-```
-
-### 4. TILE FLAGS - EQUIVALENTI ✅
-
-```
-C               │ Rust              │ Binary
-─────────────────┼───────────────────┼─────────────────
-NOTHING         │ TileFlags::NOTHING │ 0b0000000000000
-OBJECT          │ TileFlags::OBJECT  │ 0b0000000000001
-MONSTER         │ TileFlags::MONSTER │ 0b0000000000010
-STAIRS          │ TileFlags::STAIRS  │ 0b0000000000100
-HORWALL         │ TileFlags::HORWALL │ 0b0000000001000
-VERTWALL        │ TileFlags::VERTWALL│ 0b0000000010000
-DOOR            │ TileFlags::DOOR    │ 0b0000000100000
-FLOOR           │ TileFlags::FLOOR   │ 0b0000001000000
-TUNNEL          │ TileFlags::TUNNEL  │ 0b0000010000000
-TRAP            │ TileFlags::TRAP    │ 0b0000100000000
-HIDDEN          │ TileFlags::HIDDEN  │ 0b0001000000000
-```
-
-### 5. ALGORITMI PRINCIPALI - MANCANTI IN RUST
-
-#### A. `connect_rooms()` - MANCANTE
-**Funzione:** Connette due stanze adiacenti con corridoi
-**Logica:**
-- Controlla se stanze sono nella stessa riga o colonna
-- Piazza porte sulle pareti
-- Disegna passaggio a L con punto di mezzo casuale
-
-**Equivalente Rust:** ❌ NON ESISTE
-
-#### B. `draw_simple_passage()` - MANCANTE
-**Funzione:** Disegna corridoi con algoritmo Manhattan (L-shaped)
-**Logica:**
-```
-[Room 1] ===== [Branch] ===== [Room 2]
-                   |
-                   | (vertical or horizontal)
-```
-
-**Equivalente Rust:** ❌ NON ESISTE
-
-#### C. `add_mazes()` - MANCANTE
-**Funzione:** Aggiunge labirinti casuali nelle stanze vuote
-**Logica:** 
-- Probabilità aumenta con profondità dungeon
-- Labirinti generati solo per livelli > 1
-- Aumentano difficoltà
-
-**Equivalente Rust:** ❌ NON ESISTE
-
-#### D. `fill_out_level()` - MANCANTE
-**Funzione:** Riempie aree vuote con dead ends
-**Logica:**
-- Evita aree disconnesse
-- Crea ramificazioni per gameplay
-- Usa corridoi nascosti
-
-**Equivalente Rust:** ❌ NON ESISTE
-
-#### E. `make_maze()` - MANCANTE
-**Funzione:** Genera labirinti ricorsivi
-**Logica:** Backtracking depth-first per creare pattern complessti
-
-**Equivalente Rust:** ❌ NON ESISTE
-
-### 6. DISTRIBUZIONE RANDOM
-
-#### C
-```c
-char random_rooms[MAXROOMS+1] = { 3,7,5,2,0,6,1,4,8 };
-
-switch(must_exist1) {
-    case 0: must_exist[0,1,2];  // Riga 0 garantita
-    case 1: must_exist[3,4,5];  // Riga 1 garantita
-    case 2: must_exist[6,7,8];  // Riga 2 garantita
-    // ... anche per colonne
-}
-// Garantisce stanze garantite per ogni livello
-```
-
-#### Rust
-```rust
-// Nessun vincolo: stanza casuale ogni volta
-let room_height = rng.get_rand(4, 8) as i16;
-let room_width = rng.get_rand(8, 20) as i16;
-let top = rng.get_rand(1, max_top as i32) as i16;
-let left = rng.get_rand(1, max_left as i32) as i16;
-```
-
-**Differenza:** Rust non garantisce stanze critiche
-
----
-
-## EQUIVALENZA FUNZIONALE: ❌ NO
-
-### Livello di implementazione: ~10% del codice C originale
-
-### Cosa è stato implementato:
-- ✅ Struttura griglia (24x80)
-- ✅ TileFlags (HORWALL, VERTWALL, FLOOR, ecc.)
-- ✅ Struct Room basilare
-- ✅ Dimensioni costanti (DROWS=24, DCOLS=80, MAXROOMS=9)
-- ✅ Spawn position nel centro prima stanza
-
-### Cosa MANCA (90%):
-- ❌ Griglia 3x3 di stanze predefinite
-- ❌ Sistema di connessioni inter-stanze
-- ❌ Corridoi (tunnels) e passaggi
-- ❌ Porte con coordinate e connessioni
-- ❌ Labirinti
-- ❌ Dead ends
-- ❌ Sistema di visibilità (hidden passages)
-- ❌ Tipo stanza (ROOM, MAZE, CROSS, DEADEND)
-- ❌ Algoritmi di connessione
-
----
-
-## NOTE DALLA CODEBASE RUST
-
-**File:** `src/world_gen/mod.rs` (linee 116-119)
-```rust
-pub fn generate_level(rng: &mut GameRng) -> GeneratedLevel {
-    // Minimal deterministic generation for BL-011:
-    // one rectangular room placed via legacy-compatible RNG.
-```
-
-**Ticket associato:** BL-011 (evidentemente specifico per scenario minimalista)
-
-**Conclusione:** Questa è un'implementazione parziale intenzionale per un backlog item specifico, NON l'intera generazione di dungeon del Rogue originale.
-
----
-
-## RACCOMANDAZIONI
-
-### 1. **Per raggiungere equivalenza totale:**
-```
-1. Riscrivere generate_level() con algoritmo grid 3x3
-2. Implementare connect_rooms() e draw_simple_passage()
-3. Implementare add_mazes() e make_maze()
-4. Implementare fill_out_level() e dead ends
-5. Estendere Room struct con connessioni e tipo
-6. Aggiungere sistema di connessione room-to-room
-```
-
-### 2. **Sforzo stimato:** 8-12 ore di implementazione
-
-### 3. **Test di equivalenza:** 
-```bash
-# Usando map_viewer per confrontare visivamente
-cargo run --bin map_viewer 12345 10  # 10 livelli stesso seed
-```
-
----
-
-## APPENDICE: Output Map Viewer
-
-Il visualizzatore genera mappe come questa per ogni livello:
-
-```
-╭────────────────────────────────────────────────────────────────────────────────╮
-│................................................................................│
-│......────────────────..........................................................│
-│......│··············│..........................................................│
-│......│··············│..........................................................│
-│......─────────────────..........................................................│
-│................................................................................│
-╰────────────────────────────────────────────────────────────────────────────────╯
-```
-
-**Legenda implementata:**
-- `.` = Empty
-- `─` = Horizontal wall
-- `│` = Vertical wall
-- `·` = Floor
-- `#` = Tunnel (pronto per futura implementazione)
-- `+` = Door (pronto per futura implementazione)
+Per confronto con C usare gli script in `automation/harness/`.

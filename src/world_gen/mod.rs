@@ -166,6 +166,57 @@ fn randomize_offsets(rng: &mut GameRng) -> [i16; 4] {
     offsets
 }
 
+fn mixed_room_order(rng: &mut GameRng) -> [usize; MAXROOMS] {
+    let mut order = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+
+    for _ in 0..(3 * MAXROOMS) {
+        let a = rng.get_rand(0, (MAXROOMS - 1) as i32) as usize;
+        let mut b = rng.get_rand(0, (MAXROOMS - 1) as i32) as usize;
+        while a == b {
+            b = rng.get_rand(0, (MAXROOMS - 1) as i32) as usize;
+        }
+        order.swap(a, b);
+    }
+
+    order
+}
+
+fn mark_connection(connections: &mut [[bool; MAXROOMS]; MAXROOMS], a: usize, b: usize) {
+    connections[a][b] = true;
+    connections[b][a] = true;
+}
+
+fn are_playable_rooms_connected(
+    slot_rooms: &[Option<Room>; MAXROOMS],
+    connections: &[[bool; MAXROOMS]; MAXROOMS],
+) -> bool {
+    let Some(start) = slot_rooms.iter().position(Option::is_some) else {
+        return true;
+    };
+
+    let mut visited = [false; MAXROOMS];
+    let mut stack = vec![start];
+    visited[start] = true;
+
+    while let Some(node) = stack.pop() {
+        for next in 0..MAXROOMS {
+            if !connections[node][next] || visited[next] || slot_rooms[next].is_none() {
+                continue;
+            }
+            visited[next] = true;
+            stack.push(next);
+        }
+    }
+
+    for i in 0..MAXROOMS {
+        if slot_rooms[i].is_some() && !visited[i] {
+            return false;
+        }
+    }
+
+    true
+}
+
 fn draw_maze_in_slot(grid: &mut DungeonGrid, rng: &mut GameRng, slot: usize) {
     let (top, bottom, left, right) = slot_bounds(slot);
 
@@ -514,22 +565,35 @@ pub fn generate_level_with_depth(rng: &mut GameRng, level_depth: i16) -> Generat
 
     add_mazes(&mut grid, rng, &slot_rooms, &mut slot_kinds, level_depth);
 
-    for i in 0..MAXROOMS {
+    let room_order = mixed_room_order(rng);
+    let mut connections = [[false; MAXROOMS]; MAXROOMS];
+
+    for i in room_order {
         if i < (MAXROOMS - 1) {
-            let _ = connect_rooms(&mut grid, rng, &slot_rooms, i, i + 1);
+            if connect_rooms(&mut grid, rng, &slot_rooms, i, i + 1) {
+                mark_connection(&mut connections, i, i + 1);
+            }
         }
         if i < (MAXROOMS - 3) {
-            let _ = connect_rooms(&mut grid, rng, &slot_rooms, i, i + 3);
+            if connect_rooms(&mut grid, rng, &slot_rooms, i, i + 3) {
+                mark_connection(&mut connections, i, i + 3);
+            }
         }
         if i < (MAXROOMS - 2) && slot_rooms[i + 1].is_none() {
             if connect_rooms(&mut grid, rng, &slot_rooms, i, i + 2) {
                 slot_kinds[i + 1] = SlotKind::Cross;
+                mark_connection(&mut connections, i, i + 2);
             }
         }
         if i < (MAXROOMS - 6) && slot_rooms[i + 3].is_none() {
             if connect_rooms(&mut grid, rng, &slot_rooms, i, i + 6) {
                 slot_kinds[i + 3] = SlotKind::Cross;
+                mark_connection(&mut connections, i, i + 6);
             }
+        }
+
+        if are_playable_rooms_connected(&slot_rooms, &connections) {
+            break;
         }
     }
 
