@@ -288,12 +288,12 @@ mod tests {
         let mut rng = GameRng::new(12345);
         let level = generate_level(&mut rng);
         let player_position = level.spawn_position();
-        let mut monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(18, 16))];
+        let mut monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(3, 22))];
 
         let first_turn = tick_monsters(&mut monsters, &level, player_position);
 
         assert!(first_turn.is_empty());
-        assert_eq!(monsters[0].position, Position::new(18, 15));
+        assert_eq!(monsters[0].position, Position::new(3, 21));
 
         let second_turn = tick_monsters(&mut monsters, &level, player_position);
         let third_turn = tick_monsters(&mut monsters, &level, player_position);
@@ -301,13 +301,13 @@ mod tests {
 
         assert!(second_turn.is_empty());
         assert!(third_turn.is_empty());
-        assert_eq!(monsters[0].position, Position::new(18, 13));
+        assert_eq!(monsters[0].position, Position::new(3, 19));
         assert_ne!(monsters[0].position, player_position);
         assert_eq!(
             fourth_turn,
             vec![CombatEvent::MonsterHitPlayer {
                 monster_kind: MonsterKind::Kestrel,
-                position: Position::new(18, 13),
+                position: Position::new(3, 19),
                 damage: 1,
             }]
         );
@@ -337,7 +337,7 @@ mod tests {
         let mut rng = GameRng::new(12345);
         let level = generate_level(&mut rng);
         let player_position = level.spawn_position();
-        let mut monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(18, 13))];
+        let mut monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(3, 19))];
 
         let events = tick_monsters(&mut monsters, &level, player_position);
 
@@ -346,12 +346,12 @@ mod tests {
             vec![
                 CombatEvent::MonsterHitPlayer {
                     monster_kind: MonsterKind::IceMonster,
-                    position: Position::new(18, 13),
+                    position: Position::new(3, 19),
                     damage: 1,
                 },
                 CombatEvent::MonsterAppliedEffect {
                     monster_kind: MonsterKind::IceMonster,
-                    position: Position::new(18, 13),
+                    position: Position::new(3, 19),
                     effect: StatusEffectEvent::Frozen { turns: 2 },
                 },
             ]

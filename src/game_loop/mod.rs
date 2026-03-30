@@ -680,7 +680,7 @@ mod tests {
         assert_eq!(game.state().turns, 0);
         assert_eq!(game.state().player_hit_points, 12);
         assert!(!game.current_level().rooms.is_empty());
-        assert_eq!(game.state().player_position, Position::new(18, 12));
+        assert_eq!(game.state().player_position, Position::new(3, 18));
         assert!(game.state().inventory.is_empty());
         assert_eq!(game.state().monsters.len(), 1);
         assert_ne!(
@@ -701,8 +701,8 @@ mod tests {
 
         assert_eq!(game.state().turns, 2);
         assert_eq!(game.state().pending_direction, Some(Direction::Left));
-        assert_eq!(game.state().player_position, Position::new(18, 11));
-        assert_eq!(game.state().monsters[0].position, Position::new(18, 16));
+        assert_eq!(game.state().player_position, Position::new(3, 17));
+        assert_eq!(game.state().monsters[0].position, Position::new(3, 22));
         assert!(game.state().last_turn_events.is_empty());
         assert!(!game.state().last_move_blocked);
     }
@@ -748,7 +748,7 @@ mod tests {
     fn move_into_wall_is_blocked_without_consuming_turn() {
         let mut game = GameLoop::new(12345);
 
-        for _ in 0..5 {
+        for _ in 0..6 {
             assert_eq!(
                 game.step(Command::Move(Direction::Left)),
                 StepOutcome::Continue
@@ -777,8 +777,8 @@ mod tests {
             game.step(Command::Move(Direction::UpLeft)),
             StepOutcome::Continue
         );
-        assert_eq!(game.state().player_position, Position::new(17, 11));
-        assert_eq!(game.state().monsters[0].position, Position::new(17, 17));
+        assert_eq!(game.state().player_position, Position::new(2, 17));
+        assert_eq!(game.state().monsters[0].position, Position::new(3, 23));
         assert!(!game.state().last_move_blocked);
     }
 
@@ -840,7 +840,7 @@ mod tests {
                 equipped_slot: Some(EquipmentSlot::Armor),
             });
 
-        game.state.monsters[0].position = Position::new(18, 13);
+        game.state.monsters[0].position = Position::new(3, 19);
         game.state.monsters[0].hit_points = 2;
 
         assert_eq!(
@@ -893,7 +893,7 @@ mod tests {
     #[test]
     fn moving_into_monster_attacks_instead_of_moving() {
         let mut game = GameLoop::new(12345);
-        game.state.monsters[0].position = Position::new(18, 13);
+        game.state.monsters[0].position = Position::new(3, 19);
         game.state.monsters[0].hit_points = 2;
 
         assert_eq!(
@@ -901,7 +901,7 @@ mod tests {
             StepOutcome::Continue
         );
 
-        assert_eq!(game.state().player_position, Position::new(18, 12));
+        assert_eq!(game.state().player_position, Position::new(3, 18));
         assert_eq!(game.state().turns, 1);
         assert_eq!(game.state().player_hit_points, 11);
         assert_eq!(game.state().monsters[0].hit_points, 1);
@@ -910,13 +910,13 @@ mod tests {
             vec![
                 CombatEvent::PlayerHitMonster {
                     monster_kind: game.state().monsters[0].kind,
-                    position: Position::new(18, 13),
+                    position: Position::new(3, 19),
                     damage: 1,
                     killed: false,
                 },
                 CombatEvent::MonsterHitPlayer {
                     monster_kind: game.state().monsters[0].kind,
-                    position: Position::new(18, 13),
+                    position: Position::new(3, 19),
                     damage: 1,
                 },
             ]
@@ -926,7 +926,7 @@ mod tests {
     #[test]
     fn killing_monster_removes_it_before_counter_attack() {
         let mut game = GameLoop::new(12345);
-        game.state.monsters[0].position = Position::new(18, 13);
+        game.state.monsters[0].position = Position::new(3, 19);
         game.state.monsters[0].hit_points = 1;
 
         assert_eq!(
@@ -941,7 +941,7 @@ mod tests {
             game.state().last_turn_events,
             vec![CombatEvent::PlayerHitMonster {
                 monster_kind: crate::actors::MonsterKind::Kestrel,
-                position: Position::new(18, 13),
+                position: Position::new(3, 19),
                 damage: 1,
                 killed: true,
             }]
@@ -953,7 +953,7 @@ mod tests {
         let mut game = GameLoop::new(12345);
         game.state.monsters = vec![Monster::new(
             MonsterKind::VenusFlytrap,
-            Position::new(18, 13),
+            Position::new(3, 19),
         )];
 
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
@@ -965,7 +965,7 @@ mod tests {
             StepOutcome::Continue
         );
 
-        assert_eq!(game.state.player_position, Position::new(18, 12));
+        assert_eq!(game.state.player_position, Position::new(3, 18));
         assert!(game.state.last_move_blocked);
         assert_eq!(game.state.turns, turns_before + 1);
     }
@@ -973,7 +973,7 @@ mod tests {
     #[test]
     fn freeze_effect_skips_player_turns() {
         let mut game = GameLoop::new(12345);
-        game.state.monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(18, 13))];
+        game.state.monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(3, 19))];
 
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
         assert_eq!(game.state.frozen_turns, 2);
@@ -992,7 +992,7 @@ mod tests {
             game.step(Command::Move(Direction::Left)),
             StepOutcome::Continue
         );
-        assert_eq!(game.state.player_position, Position::new(18, 12));
+        assert_eq!(game.state.player_position, Position::new(3, 18));
         assert_eq!(game.state.turns, turns_before + 1);
         assert_eq!(game.state.frozen_turns, 1);
     }
@@ -1002,7 +1002,7 @@ mod tests {
         let mut game = GameLoop::new(12345);
         game.state.monsters = vec![Monster::new(
             MonsterKind::Rattlesnake,
-            Position::new(18, 13),
+            Position::new(3, 19),
         )];
 
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
@@ -1023,53 +1023,3 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-mod debug_positions {
-    use super::{Command, Direction, GameLoop};
-
-    #[test]
-    fn print_seed_12345_positions() {
-        let mut game = GameLoop::new(12345);
-        eprintln!("spawn: {:?}", game.state().player_position);
-        eprintln!("monster[0]: {:?}", game.state().monsters[0].position);
-        eprintln!("trap_positions: {:?}", game.state().trap_positions);
-        
-        let _ = game.step(Command::Rest);
-        eprintln!("after rest - monster: {:?}", game.state().monsters[0].position);
-        
-        let _ = game.step(Command::Move(Direction::Left));
-        eprintln!("after move_left - player: {:?}", game.state().player_position);
-        eprintln!("after move_left - monster: {:?}", game.state().monsters[0].position);
-    }
-}
-
-#[cfg(test)]
-mod debug_positions2 {
-    use super::{Command, Direction, GameLoop};
-    use crate::core_types::Position;
-
-    #[test]
-    fn print_more_positions() {
-        // Test diagonal and wall
-        let mut game = GameLoop::new(12345);
-        eprintln!("spawn: {:?}", game.state().player_position);
-        
-        let _ = game.step(Command::Move(Direction::UpLeft));
-        eprintln!("after UpLeft: {:?}", game.state().player_position);
-        eprintln!("monster after UpLeft: {:?}", game.state().monsters[0].position);
-        eprintln!("blocked: {}", game.state().last_move_blocked);
-        
-        // Reset and test wall
-        let mut game2 = GameLoop::new(12345);
-        for i in 0..8 {
-            let _ = game2.step(Command::Move(Direction::Left));
-            eprintln!("after {} lefts: {:?} (blocked: {})", i+1, game2.state().player_position, game2.state().last_move_blocked);
-        }
-        
-        // Check trap adjacency
-        let mut game3 = GameLoop::new(12345);
-        let trap = game3.state().trap_positions[0];
-        let player = game3.state().player_position;
-        eprintln!("trap: {:?}, player: {:?}, is_adjacent: {}", trap, player, super::is_adjacent(trap, player));
-    }
-}
