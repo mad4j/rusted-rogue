@@ -2,6 +2,14 @@
   "version": 1,
   "entries": [
     {
+      "score": 1317,
+      "level": 1,
+      "turns": 67,
+      "monsters_defeated": 1,
+      "outcome": "quit",
+      "recorded_at_unix": 1774979948
+    },
+    {
       "score": 1314,
       "level": 1,
       "turns": 64,
@@ -144,14 +152,6 @@
       "monsters_defeated": 0,
       "outcome": "quit",
       "recorded_at_unix": 1774844747
-    },
-    {
-      "score": 1001,
-      "level": 1,
-      "turns": 1,
-      "monsters_defeated": 0,
-      "outcome": "quit",
-      "recorded_at_unix": 1774845137
     },
     {
       "score": 1001,

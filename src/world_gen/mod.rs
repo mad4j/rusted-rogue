@@ -3,12 +3,38 @@ use crate::core_types::{
 };
 use crate::rng::GameRng;
 
+const DIR_UP: usize = 0;
+const DIR_RIGHT: usize = 1;
+const DIR_DOWN: usize = 2;
+const DIR_LEFT: usize = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DoorLink {
+    pub door_row: i16,
+    pub door_col: i16,
+    pub oth_room: i16,
+    pub oth_row: i16,
+    pub oth_col: i16,
+}
+
+impl DoorLink {
+    pub const NONE: Self = Self {
+        door_row: -1,
+        door_col: -1,
+        oth_room: -1,
+        oth_row: -1,
+        oth_col: -1,
+    };
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Room {
     pub top_row: i16,
     pub bottom_row: i16,
     pub left_col: i16,
     pub right_col: i16,
+    pub slot_index: i16,
+    pub doors: [DoorLink; 4],
 }
 
 impl Room {
@@ -18,6 +44,32 @@ impl Room {
             bottom_row,
             left_col,
             right_col,
+            slot_index: -1,
+            doors: [DoorLink::NONE; 4],
+        }
+    }
+
+    pub fn with_slot(top_row: i16, bottom_row: i16, left_col: i16, right_col: i16, slot_index: usize) -> Self {
+        let mut room = Self::new(top_row, bottom_row, left_col, right_col);
+        room.slot_index = slot_index as i16;
+        room
+    }
+
+    pub fn with_metadata(
+        top_row: i16,
+        bottom_row: i16,
+        left_col: i16,
+        right_col: i16,
+        slot_index: i16,
+        doors: [DoorLink; 4],
+    ) -> Self {
+        Self {
+            top_row,
+            bottom_row,
+            left_col,
+            right_col,
+            slot_index,
+            doors,
         }
     }
 
@@ -348,7 +400,26 @@ fn make_room_in_slot(rng: &mut GameRng, slot: usize, must_exist: bool) -> Option
         return None;
     }
 
-    Some(Room::new(top_row, bottom_row, left_col, right_col))
+    Some(Room::with_slot(top_row, bottom_row, left_col, right_col, slot))
+}
+
+fn set_room_door(
+    rooms: &mut [Option<Room>; MAXROOMS],
+    from_slot: usize,
+    direction: usize,
+    door: (i16, i16),
+    to_slot: usize,
+    to_door: (i16, i16),
+) {
+    if let Some(room) = &mut rooms[from_slot] {
+        room.doors[direction] = DoorLink {
+            door_row: door.0,
+            door_col: door.1,
+            oth_room: to_slot as i16,
+            oth_row: to_door.0,
+            oth_col: to_door.1,
+        };
+    }
 }
 
 fn put_horizontal_doors(grid: &mut DungeonGrid, rng: &mut GameRng, left: Room, right: Room) -> ((i16, i16), (i16, i16)) {
@@ -444,7 +515,7 @@ fn draw_simple_passage(grid: &mut DungeonGrid, rng: &mut GameRng, start: (i16, i
     }
 }
 
-fn connect_rooms(grid: &mut DungeonGrid, rng: &mut GameRng, rooms: &[Option<Room>; MAXROOMS], room1: usize, room2: usize) -> bool {
+fn connect_rooms(grid: &mut DungeonGrid, rng: &mut GameRng, rooms: &mut [Option<Room>; MAXROOMS], room1: usize, room2: usize) -> bool {
     let Some(a) = rooms[room1] else {
         return false;
     };
@@ -453,16 +524,28 @@ fn connect_rooms(grid: &mut DungeonGrid, rng: &mut GameRng, rooms: &[Option<Room
     };
 
     if same_row(room1, room2) {
-        let (left, right) = if a.left_col <= b.left_col { (a, b) } else { (b, a) };
+        let (left_slot, right_slot, left, right) = if a.left_col <= b.left_col {
+            (room1, room2, a, b)
+        } else {
+            (room2, room1, b, a)
+        };
         let (d1, d2) = put_horizontal_doors(grid, rng, left, right);
         draw_simple_passage(grid, rng, d1, d2, true);
+        set_room_door(rooms, left_slot, DIR_RIGHT, d1, right_slot, d2);
+        set_room_door(rooms, right_slot, DIR_LEFT, d2, left_slot, d1);
         return true;
     }
 
     if same_col(room1, room2) {
-        let (top, bottom) = if a.top_row <= b.top_row { (a, b) } else { (b, a) };
+        let (top_slot, bottom_slot, top, bottom) = if a.top_row <= b.top_row {
+            (room1, room2, a, b)
+        } else {
+            (room2, room1, b, a)
+        };
         let (d1, d2) = put_vertical_doors(grid, rng, top, bottom);
         draw_simple_passage(grid, rng, d1, d2, false);
+        set_room_door(rooms, top_slot, DIR_DOWN, d1, bottom_slot, d2);
+        set_room_door(rooms, bottom_slot, DIR_UP, d2, top_slot, d1);
         return true;
     }
 
@@ -570,23 +653,23 @@ pub fn generate_level_with_depth(rng: &mut GameRng, level_depth: i16) -> Generat
 
     for i in room_order {
         if i < (MAXROOMS - 1) {
-            if connect_rooms(&mut grid, rng, &slot_rooms, i, i + 1) {
+            if connect_rooms(&mut grid, rng, &mut slot_rooms, i, i + 1) {
                 mark_connection(&mut connections, i, i + 1);
             }
         }
         if i < (MAXROOMS - 3) {
-            if connect_rooms(&mut grid, rng, &slot_rooms, i, i + 3) {
+            if connect_rooms(&mut grid, rng, &mut slot_rooms, i, i + 3) {
                 mark_connection(&mut connections, i, i + 3);
             }
         }
         if i < (MAXROOMS - 2) && slot_rooms[i + 1].is_none() {
-            if connect_rooms(&mut grid, rng, &slot_rooms, i, i + 2) {
+            if connect_rooms(&mut grid, rng, &mut slot_rooms, i, i + 2) {
                 slot_kinds[i + 1] = SlotKind::Cross;
                 mark_connection(&mut connections, i, i + 2);
             }
         }
         if i < (MAXROOMS - 6) && slot_rooms[i + 3].is_none() {
-            if connect_rooms(&mut grid, rng, &slot_rooms, i, i + 6) {
+            if connect_rooms(&mut grid, rng, &mut slot_rooms, i, i + 6) {
                 slot_kinds[i + 3] = SlotKind::Cross;
                 mark_connection(&mut connections, i, i + 6);
             }

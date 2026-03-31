@@ -11,7 +11,7 @@ use crate::game_loop::{Command, Direction, GameLoop, GameState};
 use crate::inventory_items::{
     EquipmentSlot, FloorItem, InventoryEntry, InventoryEvent, InventoryItem,
 };
-use crate::world_gen::{DungeonGrid, GeneratedLevel, Room};
+use crate::world_gen::{DoorLink, DungeonGrid, GeneratedLevel, Room};
 
 const SAVE_VERSION: u8 = 1;
 const SAVE_FILE_NAME: &str = "rusted-rogue-save-v1.json";
@@ -69,6 +69,19 @@ struct RoomSnapshot {
     bottom_row: i16,
     left_col: i16,
     right_col: i16,
+    #[serde(default)]
+    slot_index: i16,
+    #[serde(default)]
+    doors: [DoorLinkSnapshot; 4],
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+struct DoorLinkSnapshot {
+    door_row: i16,
+    door_col: i16,
+    oth_room: i16,
+    oth_row: i16,
+    oth_col: i16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -376,6 +389,14 @@ impl LevelSnapshot {
                     bottom_row: room.bottom_row,
                     left_col: room.left_col,
                     right_col: room.right_col,
+                    slot_index: room.slot_index,
+                    doors: room.doors.map(|door| DoorLinkSnapshot {
+                        door_row: door.door_row,
+                        door_col: door.door_col,
+                        oth_room: door.oth_room,
+                        oth_row: door.oth_row,
+                        oth_col: door.oth_col,
+                    }),
                 })
                 .collect(),
             grid,
@@ -402,7 +423,23 @@ impl LevelSnapshot {
         let rooms = self
             .rooms
             .into_iter()
-            .map(|room| Room::new(room.top_row, room.bottom_row, room.left_col, room.right_col))
+            .map(|room| {
+                let doors = room.doors.map(|door| DoorLink {
+                    door_row: door.door_row,
+                    door_col: door.door_col,
+                    oth_room: door.oth_room,
+                    oth_row: door.oth_row,
+                    oth_col: door.oth_col,
+                });
+                Room::with_metadata(
+                    room.top_row,
+                    room.bottom_row,
+                    room.left_col,
+                    room.right_col,
+                    room.slot_index,
+                    doors,
+                )
+            })
             .collect();
 
         Ok(GeneratedLevel { grid, rooms })
