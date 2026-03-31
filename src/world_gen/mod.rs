@@ -218,6 +218,10 @@ fn randomize_offsets(rng: &mut GameRng) -> [i16; 4] {
     offsets
 }
 
+fn coin_toss(rng: &mut GameRng) -> bool {
+    rng.rand_percent(50)
+}
+
 fn mixed_room_order(rng: &mut GameRng) -> [usize; MAXROOMS] {
     let mut order = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -357,6 +361,28 @@ fn carve_tunnel(grid: &mut DungeonGrid, row: i16, col: i16) {
     }
 }
 
+fn slot_center(slot: usize) -> (i16, i16) {
+    let (top, bottom, left, right) = slot_bounds(slot);
+    ((top + bottom) / 2, (left + right) / 2)
+}
+
+fn mask_slot(grid: &DungeonGrid, slot: usize, mask: TileFlags) -> Option<(i16, i16)> {
+    let (top, bottom, left, right) = slot_bounds(slot);
+
+    for row in top..=bottom {
+        for col in left..=right {
+            let Some(tile) = grid.get(row, col) else {
+                continue;
+            };
+            if tile.intersects(mask) {
+                return Some((row, col));
+            }
+        }
+    }
+
+    None
+}
+
 fn draw_room(grid: &mut DungeonGrid, room: Room) {
     for row in room.top_row..=room.bottom_row {
         for col in room.left_col..=room.right_col {
@@ -419,6 +445,134 @@ fn set_room_door(
             oth_row: to_door.0,
             oth_col: to_door.1,
         };
+    }
+}
+
+fn set_room_door_position(
+    rooms: &mut [Option<Room>; MAXROOMS],
+    room_slot: usize,
+    direction: usize,
+    door: (i16, i16),
+) {
+    if let Some(room) = &mut rooms[room_slot] {
+        room.doors[direction] = DoorLink {
+            door_row: door.0,
+            door_col: door.1,
+            oth_room: -1,
+            oth_row: -1,
+            oth_col: -1,
+        };
+    }
+}
+
+fn recursive_deadend(
+    grid: &mut DungeonGrid,
+    rng: &mut GameRng,
+    slot_kinds: &mut [SlotKind; MAXROOMS],
+    rn: usize,
+    offsets: [i16; 4],
+    srow: i16,
+    scol: i16,
+    r_de: &mut Option<usize>,
+) {
+    slot_kinds[rn] = SlotKind::DeadEnd;
+    let _ = grid.set(srow, scol, TileFlags::TUNNEL);
+
+    for offset in offsets {
+        let target = rn as i16 + offset;
+        if !(0..MAXROOMS as i16).contains(&target) {
+            continue;
+        }
+
+        let de = target as usize;
+        if !(same_row(rn, de) || same_col(rn, de)) {
+            continue;
+        }
+        if slot_kinds[de] != SlotKind::Nothing {
+            continue;
+        }
+
+        let (drow, dcol) = slot_center(de);
+        draw_simple_passage(grid, rng, (srow, scol), (drow, dcol), same_row(rn, de));
+        *r_de = Some(de);
+        recursive_deadend(grid, rng, slot_kinds, de, offsets, drow, dcol, r_de);
+    }
+}
+
+fn fill_it(
+    grid: &mut DungeonGrid,
+    rng: &mut GameRng,
+    slot_rooms: &mut [Option<Room>; MAXROOMS],
+    slot_kinds: &mut [SlotKind; MAXROOMS],
+    rn: usize,
+    do_rec_de: bool,
+    r_de: &mut Option<usize>,
+) {
+    let offsets = randomize_offsets(rng);
+    let mut rooms_found = 0;
+    let mut did_this = false;
+
+    for (index, offset) in offsets.into_iter().enumerate() {
+        let target_raw = rn as i16 + offset;
+        if !(0..MAXROOMS as i16).contains(&target_raw) {
+            continue;
+        }
+
+        let target = target_raw as usize;
+        if !(same_row(rn, target) || same_col(rn, target)) {
+            continue;
+        }
+
+        if slot_kinds[target] != SlotKind::Room && slot_kinds[target] != SlotKind::Maze {
+            continue;
+        }
+
+        let horizontal = same_row(rn, target);
+        let tunnel_dir = if horizontal {
+            if rn < target { DIR_RIGHT } else { DIR_LEFT }
+        } else if rn < target {
+            DIR_DOWN
+        } else {
+            DIR_UP
+        };
+        let door_dir = (tunnel_dir + 2) % 4;
+
+        let Some(target_room) = slot_rooms[target] else {
+            continue;
+        };
+        if target_room.doors[door_dir].oth_room >= 0 {
+            continue;
+        }
+
+        let (mut srow, mut scol) = slot_center(rn);
+        if do_rec_de && !did_this {
+            if let Some((row, col)) = mask_slot(grid, rn, TileFlags::TUNNEL) {
+                srow = row;
+                scol = col;
+            }
+        }
+
+        let toward_positive = rn > target;
+        let (drow, dcol) = door_on_room_side(target_room, horizontal, toward_positive, rng);
+        let _ = grid.set(drow, dcol, TileFlags::DOOR);
+        set_room_door_position(slot_rooms, target, door_dir, (drow, dcol));
+
+        rooms_found += 1;
+        draw_simple_passage(grid, rng, (srow, scol), (drow, dcol), horizontal);
+        slot_kinds[rn] = SlotKind::DeadEnd;
+        let _ = grid.set(srow, scol, TileFlags::TUNNEL);
+
+        if (index < 3) && !did_this {
+            did_this = true;
+            if coin_toss(rng) {
+                continue;
+            }
+        }
+
+        if rooms_found < 2 && do_rec_de {
+            recursive_deadend(grid, rng, slot_kinds, rn, offsets, srow, scol, r_de);
+        }
+        break;
     }
 }
 
@@ -555,79 +709,21 @@ fn connect_rooms(grid: &mut DungeonGrid, rng: &mut GameRng, rooms: &mut [Option<
 fn fill_out_level(
     grid: &mut DungeonGrid,
     rng: &mut GameRng,
-    slot_rooms: &[Option<Room>; MAXROOMS],
+    slot_rooms: &mut [Option<Room>; MAXROOMS],
     slot_kinds: &mut [SlotKind; MAXROOMS],
 ) {
-    for slot in 0..MAXROOMS {
-        if slot_kinds[slot] != SlotKind::Nothing && slot_kinds[slot] != SlotKind::Cross {
-            continue;
+    let order = mixed_room_order(rng);
+    let mut r_de: Option<usize> = None;
+
+    for rn in order {
+        let kind = slot_kinds[rn];
+        if kind == SlotKind::Nothing || (kind == SlotKind::Cross && coin_toss(rng)) {
+            fill_it(grid, rng, slot_rooms, slot_kinds, rn, true, &mut r_de);
         }
+    }
 
-        let offsets = randomize_offsets(rng);
-        let mut connected = false;
-
-        for offset in offsets {
-            let target = slot as i16 + offset;
-            if !(0..MAXROOMS as i16).contains(&target) {
-                continue;
-            }
-
-            let target = target as usize;
-            if !(same_row(slot, target) || same_col(slot, target)) {
-                continue;
-            }
-
-            let target_kind = slot_kinds[target];
-            let target_playable = slot_rooms[target].is_some()
-                || target_kind == SlotKind::Maze
-                || target_kind == SlotKind::DeadEnd
-                || target_kind == SlotKind::Cross;
-
-            if !target_playable {
-                continue;
-            }
-
-            let (top, bottom, left, right) = slot_bounds(slot);
-            let horizontal = same_row(slot, target);
-
-            let start = if horizontal {
-                let row = rand_i16(rng, top + 1, bottom - 1);
-                let col = if slot < target { right } else { left };
-                (row, col)
-            } else {
-                let row = if slot < target { bottom } else { top };
-                let col = rand_i16(rng, left + 1, right - 1);
-                (row, col)
-            };
-
-            let end = if let Some(target_room) = slot_rooms[target] {
-                let toward_positive = target > slot;
-                let (drow, dcol) = door_on_room_side(target_room, horizontal, !toward_positive, rng);
-                let _ = grid.set(drow, dcol, TileFlags::DOOR);
-                (drow, dcol)
-            } else {
-                let (ttop, tbottom, tleft, tright) = slot_bounds(target);
-                if horizontal {
-                    let row = rand_i16(rng, ttop + 1, tbottom - 1);
-                    let col = if slot < target { tleft } else { tright };
-                    (row, col)
-                } else {
-                    let row = if slot < target { ttop } else { tbottom };
-                    let col = rand_i16(rng, tleft + 1, tright - 1);
-                    (row, col)
-                }
-            };
-
-            let _ = grid.set(start.0, start.1, TileFlags::TUNNEL);
-            draw_simple_passage(grid, rng, start, end, horizontal);
-            slot_kinds[slot] = SlotKind::DeadEnd;
-            connected = true;
-            break;
-        }
-
-        if !connected {
-            slot_kinds[slot] = SlotKind::Nothing;
-        }
+    if let Some(de) = r_de {
+        fill_it(grid, rng, slot_rooms, slot_kinds, de, false, &mut r_de);
     }
 }
 
@@ -680,7 +776,7 @@ pub fn generate_level_with_depth(rng: &mut GameRng, level_depth: i16) -> Generat
         }
     }
 
-    fill_out_level(&mut grid, rng, &slot_rooms, &mut slot_kinds);
+    fill_out_level(&mut grid, rng, &mut slot_rooms, &mut slot_kinds);
 
     let rooms: Vec<Room> = slot_rooms.into_iter().flatten().collect();
 

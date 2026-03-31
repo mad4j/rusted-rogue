@@ -18,6 +18,14 @@
       "recorded_at_unix": 1774811137
     },
     {
+      "score": 1284,
+      "level": 1,
+      "turns": 34,
+      "monsters_defeated": 1,
+      "outcome": "quit",
+      "recorded_at_unix": 1774980781
+    },
+    {
       "score": 1017,
       "level": 1,
       "turns": 17,
@@ -152,14 +160,6 @@
       "monsters_defeated": 0,
       "outcome": "quit",
       "recorded_at_unix": 1774844747
-    },
-    {
-      "score": 1001,
-      "level": 1,
-      "turns": 1,
-      "monsters_defeated": 0,
-      "outcome": "quit",
-      "recorded_at_unix": 1774845137
     }
   ]
 }
