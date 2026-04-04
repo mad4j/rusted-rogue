@@ -1,83 +1,181 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{self, stdout, Stdout, Write};
+use std::path::PathBuf;
 
-use crossterm::cursor::{Hide, MoveTo, Show};
-use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use crossterm::execute;
-use crossterm::queue;
-use crossterm::style::Print;
-use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
-};
+use doryen_rs::{App, AppOptions, DoryenApi, Engine, InputApi, TextAlign, UpdateEvent};
 
 use crate::actors::{CombatEvent, MonsterKind, StatusEffectEvent};
 use crate::core_types::{Position, TileFlags, DCOLS, DROWS};
 use crate::game_loop::{Command, Direction, GameLoop, StepOutcome};
 use crate::inventory_items::{InventoryEvent, ItemCategory};
 
-pub fn run(mut game: GameLoop) -> io::Result<()> {
-    let mut terminal = stdout();
-    let _guard = TerminalGuard::enter(&mut terminal)?;
+// Console dimensions: 80 cols x 27 rows (24 map + 3 UI lines)
+const UI_ROWS: u32 = 3;
+// Pixel size of each font glyph in terminal_8x8.png
+const FONT_W: u32 = 8;
+const FONT_H: u32 = 8;
+// Scale factor for the window (2x makes it easier to read)
+const SCALE: u32 = 2;
 
-    render(&mut terminal, &game)?;
-
-    loop {
-        if game.state().quit_requested {
-            break;
-        }
-
-        let Event::Key(key_event) = read()? else {
-            continue;
-        };
-
-        if key_event.kind != KeyEventKind::Press {
-            continue;
-        }
-
-        let Some(command) = map_key_to_command(key_event) else {
-            continue;
-        };
-
-        let outcome = game.step(command);
-        render(&mut terminal, &game)?;
-
-        if outcome == StepOutcome::Finished {
-            break;
-        }
-    }
-
-    Ok(())
+pub fn run(game: GameLoop) {
+    let con_w = DCOLS as u32;
+    let con_h = DROWS as u32 + UI_ROWS;
+    let font_path = resolve_font_path();
+    let mut app = App::new(AppOptions {
+        console_width: con_w,
+        console_height: con_h,
+        screen_width: con_w * FONT_W * SCALE,
+        screen_height: con_h * FONT_H * SCALE,
+        window_title: "Rusted Rogue".to_string(),
+        // Use an absolute path so native doryen-rs does not prepend "www/".
+        font_path,
+        vsync: true,
+        fullscreen: false,
+        show_cursor: false,
+        resizable: false,
+        intercept_close_request: false,
+        max_fps: 60,
+    });
+    app.set_engine(Box::new(RogueEngine { game }));
+    app.run();
 }
 
-fn render(stdout: &mut Stdout, game: &GameLoop) -> io::Result<()> {
-    queue!(stdout, MoveTo(0, 0), Clear(ClearType::All))?;
-
-    let lookups = RenderLookups::from_game(game);
-
-    for row in 0..(DROWS as i16) {
-        let mut line = String::with_capacity(DCOLS);
-
-        for col in 0..(DCOLS as i16) {
-            line.push(render_cell(game, Position::new(row, col), &lookups));
+fn resolve_font_path() -> String {
+    if let Ok(path) = std::env::var("RUSTED_ROGUE_FONT") {
+        let candidate = PathBuf::from(path);
+        if candidate.is_file() {
+            return candidate.to_string_lossy().into_owned();
         }
-
-        queue!(stdout, MoveTo(0, row as u16), Print(line))?;
     }
 
-    queue!(
-        stdout,
-        MoveTo(0, DROWS as u16),
-        Clear(ClearType::CurrentLine),
-        Print(render_status(game)),
-        MoveTo(0, (DROWS + 1) as u16),
-        Clear(ClearType::CurrentLine),
-        Print(render_last_message(game)),
-        MoveTo(0, (DROWS + 2) as u16),
-        Clear(ClearType::CurrentLine),
-        Print("Keys: hjkl yubn/arrows move, . rest, > descend stairs, , pick up, d drop, w wield, W wear, T take off, P put ring, R remove ring, q quaff, z zap, t throw, r read, e eat, ^ identify trap, Q quit"),
-    )?;
+    let mut candidates = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("terminal_8x8.png"));
+        candidates.push(cwd.join("www").join("terminal_8x8.png"));
+    }
 
-    stdout.flush()
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    candidates.push(manifest_dir.join("terminal_8x8.png"));
+    candidates.push(manifest_dir.join("www").join("terminal_8x8.png"));
+
+    if let Some(path) = candidates.into_iter().find(|p| p.is_file()) {
+        return path.to_string_lossy().into_owned();
+    }
+
+    panic!(
+        "Missing terminal font. Place terminal_8x8.png in project root or www/, or set RUSTED_ROGUE_FONT to an absolute file path."
+    );
+}
+
+struct RogueEngine {
+    game: GameLoop,
+}
+
+impl Engine for RogueEngine {
+    fn update(&mut self, api: &mut dyn DoryenApi) -> Option<UpdateEvent> {
+        let input = api.input();
+        if input.close_requested() || self.game.state().quit_requested {
+            return Some(UpdateEvent::Exit);
+        }
+        if let Some(cmd) = read_command(input) {
+            let outcome = self.game.step(cmd);
+            if outcome == StepOutcome::Finished {
+                return Some(UpdateEvent::Exit);
+            }
+        }
+        None
+    }
+
+    fn render(&mut self, api: &mut dyn DoryenApi) {
+        let con = api.con();
+        con.clear(None, Some((0, 0, 0, 255)), Some(b' ' as u16));
+
+        let lookups = RenderLookups::from_game(&self.game);
+
+        for row in 0..(DROWS as i32) {
+            for col in 0..(DCOLS as i32) {
+                let ch =
+                    render_cell(&self.game, Position::new(row as i16, col as i16), &lookups);
+                con.ascii(col, row, ch as u16);
+                con.fore(col, row, cell_color(ch));
+            }
+        }
+
+        let status = render_status(&self.game);
+        con.print(
+            0,
+            DROWS as i32,
+            &status,
+            TextAlign::Left,
+            Some((255, 255, 100, 255)),
+            None,
+        );
+
+        let message = render_last_message(&self.game);
+        con.print(
+            0,
+            DROWS as i32 + 1,
+            &message,
+            TextAlign::Left,
+            Some((255, 200, 150, 255)),
+            None,
+        );
+
+        con.print(
+            0,
+            DROWS as i32 + 2,
+            "hjkl yubn/arrows move  . rest  > stairs  , pick  d drop  w wield  W wear  T off  P/R ring  q quaff  z zap  t throw  r read  e eat  ^ trap  Q quit",
+            TextAlign::Left,
+            Some((120, 120, 120, 255)),
+            None,
+        );
+    }
+}
+
+fn read_command(input: &mut dyn InputApi) -> Option<Command> {
+    if input.key_pressed("Escape") {
+        return Some(Command::Quit);
+    }
+    if input.key_pressed("ArrowLeft") {
+        return Some(Command::Move(Direction::Left));
+    }
+    if input.key_pressed("ArrowRight") {
+        return Some(Command::Move(Direction::Right));
+    }
+    if input.key_pressed("ArrowUp") {
+        return Some(Command::Move(Direction::Up));
+    }
+    if input.key_pressed("ArrowDown") {
+        return Some(Command::Move(Direction::Down));
+    }
+    // text() returns characters typed this frame (respects shift for uppercase)
+    let text = input.text();
+    if let Some(ch) = text.chars().next() {
+        let cmd = GameLoop::parse_command(ch);
+        if cmd != Command::Unknown {
+            return Some(cmd);
+        }
+    }
+    None
+}
+
+fn cell_color(ch: char) -> (u8, u8, u8, u8) {
+    match ch {
+        '@' => (255, 255, 255, 255),          // player: white
+        'A'..='Z' | 'a'..='z' => (220, 80, 80, 255), // monsters: red
+        ')' | ']' => (100, 200, 255, 255),    // weapons / armor: cyan
+        '=' => (255, 210, 60, 255),           // rings: gold
+        '!' => (200, 100, 255, 255),          // potions: purple
+        '/' => (100, 255, 200, 255),          // wands: teal
+        '?' => (230, 230, 100, 255),          // scrolls: yellow
+        '%' => (100, 200, 100, 255),          // food: green
+        '-' | '|' => (160, 160, 160, 255),   // walls: grey
+        '.' => (70, 70, 90, 255),             // floor: dark blue-grey
+        '#' => (110, 80, 50, 255),            // tunnel: brown
+        '+' => (180, 130, 60, 255),           // door: tan
+        '>' => (255, 210, 50, 255),           // stairs: gold
+        '^' => (255, 80, 80, 255),            // trap: bright red
+        _ => (180, 180, 180, 255),
+    }
 }
 
 fn render_cell(game: &GameLoop, position: Position, lookups: &RenderLookups) -> char {
@@ -341,82 +439,12 @@ fn monster_name(kind: MonsterKind) -> &'static str {
     }
 }
 
-fn map_key_to_command(key_event: KeyEvent) -> Option<Command> {
-    if key_event.modifiers.contains(KeyModifiers::CONTROL)
-        && matches!(key_event.code, KeyCode::Char('c'))
-    {
-        return Some(Command::Quit);
-    }
-
-    let command = match key_event.code {
-        KeyCode::Left => Command::Move(Direction::Left),
-        KeyCode::Right => Command::Move(Direction::Right),
-        KeyCode::Up => Command::Move(Direction::Up),
-        KeyCode::Down => Command::Move(Direction::Down),
-        KeyCode::Esc => Command::Quit,
-        KeyCode::Char(character) => GameLoop::parse_command(character),
-        _ => Command::Unknown,
-    };
-
-    match command {
-        Command::Unknown => None,
-        _ => Some(command),
-    }
-}
-
-struct TerminalGuard;
-
-impl TerminalGuard {
-    fn enter(stdout: &mut Stdout) -> io::Result<Self> {
-        enable_raw_mode()?;
-        execute!(stdout, EnterAlternateScreen, Hide)?;
-        Ok(Self)
-    }
-}
-
-impl Drop for TerminalGuard {
-    fn drop(&mut self) {
-        let _ = disable_raw_mode();
-        let mut stdout = stdout();
-        let _ = execute!(stdout, Show, LeaveAlternateScreen);
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crossterm::event::{KeyEventState, KeyModifiers};
-
-    use super::{map_key_to_command, render_cell, RenderLookups};
+    use super::{render_cell, RenderLookups};
     use crate::core_types::Position;
-    use crate::game_loop::{Command, Direction, GameLoop};
+    use crate::game_loop::GameLoop;
     use crate::inventory_items::{FloorItem, InventoryItem};
-
-    #[test]
-    fn arrow_keys_map_to_movement_commands() {
-        let left = crossterm::event::KeyEvent {
-            code: crossterm::event::KeyCode::Left,
-            modifiers: KeyModifiers::NONE,
-            kind: crossterm::event::KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        };
-
-        assert_eq!(
-            map_key_to_command(left),
-            Some(Command::Move(Direction::Left))
-        );
-    }
-
-    #[test]
-    fn legacy_keys_map_through_game_parser() {
-        let wield = crossterm::event::KeyEvent {
-            code: crossterm::event::KeyCode::Char('w'),
-            modifiers: KeyModifiers::NONE,
-            kind: crossterm::event::KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        };
-
-        assert_eq!(map_key_to_command(wield), Some(Command::Wield));
-    }
 
     #[test]
     fn rendering_prioritizes_player_monster_and_floor_items() {

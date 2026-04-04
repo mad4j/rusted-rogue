@@ -17,9 +17,7 @@ fn main() {
     let _save_fn: fn() = persistence::save;
     let game = game_loop::run();
 
-    if let Err(error) = ui_terminal::run(game) {
-        eprintln!("terminal error: {error}");
-    }
+    ui_terminal::run(game);
 }
 
 fn run_script_mode_if_requested() -> Option<i32> {
