@@ -784,7 +784,12 @@ impl GameLoop {
 }
 
 pub fn run() -> GameLoop {
-    let game = GameLoop::new(12345);
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i32)
+        .unwrap_or(12345);
+
+    let game = GameLoop::new(seed);
     let _ = game.state().turns;
     let _ = game.current_level().rooms.len();
     let _ = GameLoop::parse_command('.');

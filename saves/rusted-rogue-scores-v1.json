@@ -26,6 +26,14 @@
       "recorded_at_unix": 1774980781
     },
     {
+      "score": 1025,
+      "level": 1,
+      "turns": 25,
+      "monsters_defeated": 0,
+      "outcome": "defeated",
+      "recorded_at_unix": 1775294018
+    },
+    {
       "score": 1017,
       "level": 1,
       "turns": 17,
@@ -106,60 +114,52 @@
       "recorded_at_unix": 1774808368
     },
     {
-      "score": 1001,
+      "score": 1012,
       "level": 1,
-      "turns": 1,
+      "turns": 12,
       "monsters_defeated": 0,
-      "outcome": "quit",
-      "recorded_at_unix": 1774808324
+      "outcome": "defeated",
+      "recorded_at_unix": 1775292726
     },
     {
-      "score": 1001,
+      "score": 1007,
       "level": 1,
-      "turns": 1,
+      "turns": 7,
       "monsters_defeated": 0,
-      "outcome": "quit",
-      "recorded_at_unix": 1774808337
+      "outcome": "defeated",
+      "recorded_at_unix": 1775292698
     },
     {
-      "score": 1001,
+      "score": 1007,
       "level": 1,
-      "turns": 1,
+      "turns": 7,
       "monsters_defeated": 0,
-      "outcome": "quit",
-      "recorded_at_unix": 1774808716
+      "outcome": "defeated",
+      "recorded_at_unix": 1775292707
     },
     {
-      "score": 1001,
+      "score": 1007,
       "level": 1,
-      "turns": 1,
+      "turns": 7,
       "monsters_defeated": 0,
-      "outcome": "quit",
-      "recorded_at_unix": 1774809048
+      "outcome": "defeated",
+      "recorded_at_unix": 1775292713
     },
     {
-      "score": 1001,
+      "score": 1005,
       "level": 1,
-      "turns": 1,
+      "turns": 5,
       "monsters_defeated": 0,
-      "outcome": "quit",
-      "recorded_at_unix": 1774809055
+      "outcome": "defeated",
+      "recorded_at_unix": 1775294008
     },
     {
-      "score": 1001,
+      "score": 1003,
       "level": 1,
-      "turns": 1,
+      "turns": 3,
       "monsters_defeated": 0,
-      "outcome": "quit",
-      "recorded_at_unix": 1774844739
-    },
-    {
-      "score": 1001,
-      "level": 1,
-      "turns": 1,
-      "monsters_defeated": 0,
-      "outcome": "quit",
-      "recorded_at_unix": 1774844747
+      "outcome": "defeated",
+      "recorded_at_unix": 1775294003
     }
   ]
 }
