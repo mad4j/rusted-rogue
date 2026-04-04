@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use doryen_rs::{App, AppOptions, DoryenApi, Engine, InputApi, TextAlign, UpdateEvent};
+use doryen_rs::{App, AppOptions, Console, DoryenApi, Engine, InputApi, TextAlign, UpdateEvent};
 
 use crate::actors::{CombatEvent, MonsterKind, StatusEffectEvent};
 use crate::core_types::{Position, TileFlags, DCOLS, DROWS};
@@ -37,7 +37,7 @@ pub fn run(game: GameLoop) {
         intercept_close_request: false,
         max_fps: 60,
     });
-    app.set_engine(Box::new(RogueEngine { game }));
+    app.set_engine(Box::new(RogueEngine { game, show_help: false, help_page: 0 }));
     app.run();
 }
 
@@ -49,6 +49,8 @@ fn extract_font_to_temp() -> String {
 
 struct RogueEngine {
     game: GameLoop,
+    show_help: bool,
+    help_page: usize,
 }
 
 impl Engine for RogueEngine {
@@ -56,6 +58,27 @@ impl Engine for RogueEngine {
         let input = api.input();
         if input.close_requested() || self.game.state().quit_requested {
             return Some(UpdateEvent::Exit);
+        }
+        if self.show_help {
+            if input.key_pressed("ArrowLeft") {
+                self.help_page = self.help_page.saturating_sub(1);
+            } else if input.key_pressed("ArrowRight") {
+                if self.help_page + 1 < HELP_PAGES.len() {
+                    self.help_page += 1;
+                }
+            } else if !input.text().is_empty()
+                || input.key_pressed("Escape")
+                || input.key_pressed("ArrowUp")
+                || input.key_pressed("ArrowDown")
+            {
+                self.show_help = false;
+            }
+            return None;
+        }
+        if input.text().chars().next() == Some('?') {
+            self.show_help = true;
+            self.help_page = 0;
+            return None;
         }
         if let Some(cmd) = read_command(input) {
             let outcome = self.game.step(cmd);
@@ -69,6 +92,11 @@ impl Engine for RogueEngine {
     fn render(&mut self, api: &mut dyn DoryenApi) {
         let con = api.con();
         con.clear(None, Some((0, 0, 0, 255)), Some(b' ' as u16));
+
+        if self.show_help {
+            render_help_page(con, self.help_page);
+            return;
+        }
 
         let lookups = RenderLookups::from_game(&self.game);
 
@@ -101,14 +129,6 @@ impl Engine for RogueEngine {
             None,
         );
 
-        con.print(
-            0,
-            DROWS as i32 + 2,
-            "hjkl yubn/arrows move  . rest  > stairs  , pick  d drop  w wield  W wear  T off  P/R ring  q quaff  z zap  t throw  r read  e eat  ^ trap  Q quit",
-            TextAlign::Left,
-            Some((120, 120, 120, 255)),
-            None,
-        );
     }
 }
 
@@ -137,6 +157,103 @@ fn read_command(input: &mut dyn InputApi) -> Option<Command> {
         }
     }
     None
+}
+
+#[derive(Clone, Copy)]
+enum HelpLine {
+    Section(&'static str),
+    Binding(&'static str, &'static str),
+    Empty,
+}
+
+const HELP_PAGE_1: &[HelpLine] = &[
+    HelpLine::Section("Movement"),
+    HelpLine::Binding("h / ArrowLeft",  "move left"),
+    HelpLine::Binding("j / ArrowDown",  "move down"),
+    HelpLine::Binding("k / ArrowUp",    "move up"),
+    HelpLine::Binding("l / ArrowRight", "move right"),
+    HelpLine::Empty,
+    HelpLine::Section("Diagonal Movement"),
+    HelpLine::Binding("y", "move up-left"),
+    HelpLine::Binding("u", "move up-right"),
+    HelpLine::Binding("b", "move down-left"),
+    HelpLine::Binding("n", "move down-right"),
+    HelpLine::Empty,
+    HelpLine::Section("Running  (uppercase)"),
+    HelpLine::Binding("H / J / K / L", "run in cardinal direction"),
+    HelpLine::Binding("Y / U / B / N", "run in diagonal direction"),
+];
+
+const HELP_PAGE_2: &[HelpLine] = &[
+    HelpLine::Section("Items"),
+    HelpLine::Binding(",", "pick up item"),
+    HelpLine::Binding("d", "drop item"),
+    HelpLine::Binding("e", "eat food"),
+    HelpLine::Binding("q", "quaff potion"),
+    HelpLine::Binding("r", "read scroll"),
+    HelpLine::Binding("z", "zap wand"),
+    HelpLine::Binding("t", "throw item"),
+    HelpLine::Empty,
+    HelpLine::Section("Equipment"),
+    HelpLine::Binding("w", "wield weapon"),
+    HelpLine::Binding("W", "wear armor"),
+    HelpLine::Binding("T", "take off armor"),
+    HelpLine::Binding("P", "put on ring"),
+    HelpLine::Binding("R", "remove ring"),
+    HelpLine::Empty,
+    HelpLine::Section("Other"),
+    HelpLine::Binding(".", "rest one turn"),
+    HelpLine::Binding(">", "descend stairs"),
+    HelpLine::Binding("^", "identify trap"),
+    HelpLine::Binding("?", "show this help screen"),
+    HelpLine::Empty,
+    HelpLine::Section("Game"),
+    HelpLine::Binding("S", "save game"),
+    HelpLine::Binding("L", "load game"),
+    HelpLine::Binding("Q", "quit"),
+];
+
+const HELP_PAGES: &[&[HelpLine]] = &[HELP_PAGE_1, HELP_PAGE_2];
+
+fn render_help_page(con: &mut Console, page: usize) {
+    const GOLD:   (u8, u8, u8, u8) = (255, 200,  50, 255);
+    const CYAN:   (u8, u8, u8, u8) = (100, 220, 255, 255);
+    const YELLOW: (u8, u8, u8, u8) = (255, 220,  80, 255);
+    const WHITE:  (u8, u8, u8, u8) = (220, 220, 220, 255);
+    const DIM:    (u8, u8, u8, u8) = (110, 110, 110, 255);
+
+    let total = HELP_PAGES.len();
+    let cx = DCOLS as i32 / 2;
+
+    // Row 0: title
+    con.print(cx, 0, "RUSTED ROGUE  -  KEY BINDINGS", TextAlign::Center, Some(GOLD), None);
+    // Row 1: page indicator
+    let indicator = format!("-- page {} of {} --", page + 1, total);
+    con.print(cx, 1, &indicator, TextAlign::Center, Some(DIM), None);
+
+    // Rows 3+: content
+    for (i, line) in HELP_PAGES[page].iter().enumerate() {
+        let row = (i + 3) as i32;
+        match line {
+            HelpLine::Section(text) => {
+                con.print(2, row, text, TextAlign::Left, Some(CYAN), None);
+            }
+            HelpLine::Binding(key, desc) => {
+                con.print(4,  row, key,  TextAlign::Left, Some(YELLOW), None);
+                con.print(26, row, desc, TextAlign::Left, Some(WHITE),  None);
+            }
+            HelpLine::Empty => {}
+        }
+    }
+
+    // Last row: navigation hint
+    let nav = match (page == 0, page + 1 == total) {
+        (_, true)  => "<- ArrowLeft: prev page   |   any other key: close",
+        (true, _)  => "any other key: close   |   ArrowRight: next page ->",
+        _          => "<- ArrowLeft: prev   |   ArrowRight: next ->   |   any other key: close",
+    };
+    let last_row = (DROWS as u32 + UI_ROWS - 1) as i32;
+    con.print(cx, last_row, nav, TextAlign::Center, Some(DIM), None);
 }
 
 fn cell_color(ch: char) -> (u8, u8, u8, u8) {
