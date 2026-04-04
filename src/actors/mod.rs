@@ -260,6 +260,38 @@ impl Monster {
 }
 
 impl MonsterKind {
+    /// Returns the (first_level, last_level) range from the original mon_tab.
+    pub const fn level_range(self) -> (i16, i16) {
+        match self {
+            MonsterKind::Aquator      => (9,  18),
+            MonsterKind::Bat          => (1,  8),
+            MonsterKind::Centaur      => (7,  16),
+            MonsterKind::Dragon       => (21, 126),
+            MonsterKind::Emu          => (1,  7),
+            MonsterKind::VenusFlytrap => (12, 126),
+            MonsterKind::Griffin      => (20, 126),
+            MonsterKind::Hobgoblin    => (1,  10),
+            MonsterKind::IceMonster   => (2,  11),
+            MonsterKind::Jabberwock   => (21, 126),
+            MonsterKind::Kestrel      => (1,  6),
+            MonsterKind::Leprechaun   => (6,  16),
+            MonsterKind::Medusa       => (18, 126),
+            MonsterKind::Nymph        => (10, 19),
+            MonsterKind::Orc          => (4,  13),
+            MonsterKind::Phantom      => (15, 24),
+            MonsterKind::Quagga       => (8,  17),
+            MonsterKind::Rattlesnake  => (3,  12),
+            MonsterKind::Snake        => (1,  9),
+            MonsterKind::Troll        => (13, 22),
+            MonsterKind::BlackUnicorn => (17, 26),
+            MonsterKind::Vampire      => (19, 126),
+            MonsterKind::Wraith       => (14, 23),
+            MonsterKind::Xeroc        => (16, 25),
+            MonsterKind::Yeti         => (11, 20),
+            MonsterKind::Zombie       => (5,  14),
+        }
+    }
+
     pub const fn display_char(self) -> char {
         match self {
             MonsterKind::Aquator => 'A',
@@ -316,6 +348,7 @@ pub fn spawn_basic_monsters(
     level: &GeneratedLevel,
     rng: &mut GameRng,
     player_position: Position,
+    level_depth: i16,
 ) -> Vec<Monster> {
     let Some(room) = level.rooms.first().copied() else {
         return Vec::new();
@@ -338,7 +371,7 @@ pub fn spawn_basic_monsters(
         return Vec::new();
     }
 
-    let all_kinds = [
+    const ALL_KINDS: [MonsterKind; 26] = [
         MonsterKind::Aquator,
         MonsterKind::Bat,
         MonsterKind::Centaur,
@@ -366,8 +399,21 @@ pub fn spawn_basic_monsters(
         MonsterKind::Yeti,
         MonsterKind::Zombie,
     ];
-    let kind_index = rng.get_rand(0, (all_kinds.len() - 1) as i32) as usize;
-    let kind = all_kinds[kind_index];
+
+    let eligible: Vec<MonsterKind> = ALL_KINDS
+        .into_iter()
+        .filter(|kind| {
+            let (first, last) = kind.level_range();
+            level_depth >= first && level_depth <= last
+        })
+        .collect();
+
+    if eligible.is_empty() {
+        return Vec::new();
+    }
+
+    let kind_index = rng.get_rand(0, (eligible.len() - 1) as i32) as usize;
+    let kind = eligible[kind_index];
 
     let index = rng.get_rand(0, (candidates.len() - 1) as i32) as usize;
     vec![Monster::new(kind, candidates[index])]
@@ -521,8 +567,8 @@ mod tests {
         let level_b = generate_level(&mut rng_b);
         let player_position = level_a.spawn_position();
 
-        let monsters_a = spawn_basic_monsters(&level_a, &mut rng_a, player_position);
-        let monsters_b = spawn_basic_monsters(&level_b, &mut rng_b, player_position);
+        let monsters_a = spawn_basic_monsters(&level_a, &mut rng_a, player_position, 1);
+        let monsters_b = spawn_basic_monsters(&level_b, &mut rng_b, player_position, 1);
 
         assert_eq!(monsters_a, monsters_b);
         assert_eq!(monsters_a.len(), 1);

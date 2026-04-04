@@ -47,6 +47,7 @@ pub enum Command {
     IdentifyTrap,
     Save,
     Load,
+    Descend,
     Noop,
     Unknown,
 }
@@ -116,7 +117,7 @@ impl GameLoop {
         let party_counter = rng.get_rand(1, 10) as i16;
         let current_level = generate_level_with_depth(&mut rng, 1, party_counter);
         let player_position = current_level.spawn_position();
-        let monsters = spawn_basic_monsters(&current_level, &mut rng, player_position);
+        let monsters = spawn_basic_monsters(&current_level, &mut rng, player_position, 1);
 
         let mut game = Self {
             state: GameState {
@@ -237,6 +238,7 @@ impl GameLoop {
             '^' => Command::IdentifyTrap,
             'S' => Command::Save,
             'L' => Command::Load,
+            '>' => Command::Descend,
             'y' => Command::Move(Direction::UpLeft),
             'u' => Command::Move(Direction::UpRight),
             'b' => Command::Move(Direction::DownLeft),
@@ -653,6 +655,30 @@ impl GameLoop {
         }
     }
 
+    fn descend_level(&mut self) {
+        let new_depth = self.state.level + 1;
+        let seed = (self.state.turns as i32)
+            .wrapping_mul(1_000_003)
+            .wrapping_add(self.state.level as i32);
+        let mut rng = GameRng::new(seed);
+        let new_level = generate_level_with_depth(&mut rng, new_depth, self.state.party_counter);
+        let player_position = new_level.spawn_position();
+        let monsters = spawn_basic_monsters(&new_level, &mut rng, player_position, new_depth);
+
+        self.state.level = new_depth;
+        self.state.player_position = player_position;
+        self.state.monsters = monsters;
+        self.state.floor_items.clear();
+        self.state.trap_positions.clear();
+        self.state.trap_types.clear();
+        self.state.known_traps.clear();
+        self.state.explored.clear();
+        self.state.last_system_message = Some(format!("You descend to dungeon level {}.", new_depth));
+
+        self.current_level = new_level;
+        self.update_explored();
+    }
+
     pub fn step(&mut self, command: Command) -> StepOutcome {
         apply_item_effects();
         self.state.last_turn_events.clear();
@@ -788,6 +814,20 @@ impl GameLoop {
                 | PlayerAction::Moved
                 | PlayerAction::Attacked => StepOutcome::Continue,
             },
+            Command::Descend => {
+                self.state.pending_direction = None;
+                self.state.last_move_blocked = false;
+                let pos = self.state.player_position;
+                let on_stairs = self.current_level.stairs_position == Some(pos);
+                if on_stairs {
+                    self.descend_level();
+                    self.advance_world_turn()
+                } else {
+                    self.state.last_system_message =
+                        Some("You see no stairs here.".to_string());
+                    StepOutcome::Continue
+                }
+            }
             Command::Noop | Command::Unknown => {
                 self.state.pending_direction = None;
                 self.state.last_move_blocked = false;
@@ -907,7 +947,7 @@ mod tests {
         assert_eq!(game.state().turns, 0);
         assert_eq!(game.state().player_hit_points, 12);
         assert!(!game.current_level().rooms.is_empty());
-        assert_eq!(game.state().player_position, Position::new(3, 18));
+        assert_eq!(game.state().player_position, Position::new(4, 12));
         assert!(game.state().inventory.is_empty());
         assert_eq!(game.state().monsters.len(), 1);
         assert_ne!(
@@ -928,8 +968,8 @@ mod tests {
 
         assert_eq!(game.state().turns, 2);
         assert_eq!(game.state().pending_direction, Some(Direction::Left));
-        assert_eq!(game.state().player_position, Position::new(3, 17));
-        assert_eq!(game.state().monsters[0].position, Position::new(3, 14));
+        assert_eq!(game.state().player_position, Position::new(4, 11));
+        assert_eq!(game.state().monsters[0].position, Position::new(4, 18));
         assert!(game.state().last_turn_events.is_empty());
         assert!(!game.state().last_move_blocked);
     }
@@ -976,7 +1016,7 @@ mod tests {
         let mut game = GameLoop::new(12345);
         game.state.monsters.clear();
 
-        for _ in 0..6 {
+        for _ in 0..9 {
             assert_eq!(
                 game.step(Command::Move(Direction::Left)),
                 StepOutcome::Continue
@@ -1000,11 +1040,11 @@ mod tests {
         let mut game = GameLoop::new(12345);
 
         assert_eq!(
-            game.step(Command::Move(Direction::UpLeft)),
+            game.step(Command::Move(Direction::DownRight)),
             StepOutcome::Continue
         );
-        assert_eq!(game.state().player_position, Position::new(2, 17));
-        assert_eq!(game.state().monsters[0].position, Position::new(2, 13));
+        assert_eq!(game.state().player_position, Position::new(5, 13));
+        assert_eq!(game.state().monsters[0].position, Position::new(5, 19));
         assert!(!game.state().last_move_blocked);
     }
 
@@ -1066,7 +1106,7 @@ mod tests {
                 equipped_slot: Some(EquipmentSlot::Armor),
             });
 
-        game.state.monsters[0].position = Position::new(3, 19);
+        game.state.monsters[0].position = Position::new(4, 13);
         game.state.monsters[0].hit_points = 2;
 
         assert_eq!(
@@ -1119,7 +1159,7 @@ mod tests {
     #[test]
     fn moving_into_monster_attacks_instead_of_moving() {
         let mut game = GameLoop::new(12345);
-        game.state.monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(3, 19))];
+        game.state.monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(4, 13))];
         game.state.monsters[0].hit_points = 2;
 
         assert_eq!(
@@ -1127,7 +1167,7 @@ mod tests {
             StepOutcome::Continue
         );
 
-        assert_eq!(game.state().player_position, Position::new(3, 18));
+        assert_eq!(game.state().player_position, Position::new(4, 12));
         assert_eq!(game.state().turns, 1);
         assert_eq!(game.state().player_hit_points, 11);
         assert_eq!(game.state().monsters[0].hit_points, 1);
@@ -1136,13 +1176,13 @@ mod tests {
             vec![
                 CombatEvent::PlayerHitMonster {
                     monster_kind: game.state().monsters[0].kind,
-                    position: Position::new(3, 19),
+                    position: Position::new(4, 13),
                     damage: 1,
                     killed: false,
                 },
                 CombatEvent::MonsterHitPlayer {
                     monster_kind: game.state().monsters[0].kind,
-                    position: Position::new(3, 19),
+                    position: Position::new(4, 13),
                     damage: 1,
                 },
             ]
@@ -1152,7 +1192,7 @@ mod tests {
     #[test]
     fn killing_monster_removes_it_before_counter_attack() {
         let mut game = GameLoop::new(12345);
-        game.state.monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(3, 19))];
+        game.state.monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(4, 13))];
         game.state.monsters[0].hit_points = 1;
 
         assert_eq!(
@@ -1167,7 +1207,7 @@ mod tests {
             game.state().last_turn_events,
             vec![CombatEvent::PlayerHitMonster {
                 monster_kind: crate::actors::MonsterKind::Kestrel,
-                position: Position::new(3, 19),
+                position: Position::new(4, 13),
                 damage: 1,
                 killed: true,
             }]
@@ -1179,7 +1219,7 @@ mod tests {
         let mut game = GameLoop::new(12345);
         game.state.monsters = vec![Monster::new(
             MonsterKind::VenusFlytrap,
-            Position::new(3, 19),
+            Position::new(4, 13),
         )];
 
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
@@ -1191,7 +1231,7 @@ mod tests {
             StepOutcome::Continue
         );
 
-        assert_eq!(game.state.player_position, Position::new(3, 18));
+        assert_eq!(game.state.player_position, Position::new(4, 12));
         assert!(game.state.last_move_blocked);
         assert_eq!(game.state.turns, turns_before + 1);
     }
@@ -1199,7 +1239,7 @@ mod tests {
     #[test]
     fn freeze_effect_skips_player_turns() {
         let mut game = GameLoop::new(12345);
-        game.state.monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(3, 19))];
+        game.state.monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(4, 13))];
 
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
         assert_eq!(game.state.frozen_turns, 2);
@@ -1218,7 +1258,7 @@ mod tests {
             game.step(Command::Move(Direction::Left)),
             StepOutcome::Continue
         );
-        assert_eq!(game.state.player_position, Position::new(3, 18));
+        assert_eq!(game.state.player_position, Position::new(4, 12));
         assert_eq!(game.state.turns, turns_before + 1);
         assert_eq!(game.state.frozen_turns, 1);
     }
@@ -1228,7 +1268,7 @@ mod tests {
         let mut game = GameLoop::new(12345);
         game.state.monsters = vec![Monster::new(
             MonsterKind::Rattlesnake,
-            Position::new(3, 19),
+            Position::new(4, 13),
         )];
 
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
