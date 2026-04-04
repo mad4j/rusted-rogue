@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 
 use doryen_rs::{App, AppOptions, DoryenApi, Engine, InputApi, TextAlign, UpdateEvent};
 
@@ -7,6 +6,9 @@ use crate::actors::{CombatEvent, MonsterKind, StatusEffectEvent};
 use crate::core_types::{Position, TileFlags, DCOLS, DROWS};
 use crate::game_loop::{Command, Direction, GameLoop, StepOutcome};
 use crate::inventory_items::{InventoryEvent, ItemCategory};
+
+// Font PNG embedded directly in the binary at compile time.
+const FONT_BYTES: &[u8] = include_bytes!("terminal_8x8.png");
 
 // Console dimensions: 60 cols x 35 rows (32 map + 3 UI lines)
 const UI_ROWS: u32 = 3;
@@ -19,7 +21,7 @@ const SCALE: u32 = 2;
 pub fn run(game: GameLoop) {
     let con_w = DCOLS as u32;
     let con_h = DROWS as u32 + UI_ROWS;
-    let font_path = resolve_font_path();
+    let font_path = extract_font_to_temp();
     let mut app = App::new(AppOptions {
         console_width: con_w,
         console_height: con_h,
@@ -39,31 +41,10 @@ pub fn run(game: GameLoop) {
     app.run();
 }
 
-fn resolve_font_path() -> String {
-    if let Ok(path) = std::env::var("RUSTED_ROGUE_FONT") {
-        let candidate = PathBuf::from(path);
-        if candidate.is_file() {
-            return candidate.to_string_lossy().into_owned();
-        }
-    }
-
-    let mut candidates = Vec::new();
-    if let Ok(cwd) = std::env::current_dir() {
-        candidates.push(cwd.join("terminal_8x8.png"));
-        candidates.push(cwd.join("www").join("terminal_8x8.png"));
-    }
-
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    candidates.push(manifest_dir.join("terminal_8x8.png"));
-    candidates.push(manifest_dir.join("www").join("terminal_8x8.png"));
-
-    if let Some(path) = candidates.into_iter().find(|p| p.is_file()) {
-        return path.to_string_lossy().into_owned();
-    }
-
-    panic!(
-        "Missing terminal font. Place terminal_8x8.png in project root or www/, or set RUSTED_ROGUE_FONT to an absolute file path."
-    );
+fn extract_font_to_temp() -> String {
+    let path = std::env::temp_dir().join("rusted_rogue_terminal_8x8.png");
+    std::fs::write(&path, FONT_BYTES).expect("Failed to write embedded font to temp directory");
+    path.to_string_lossy().into_owned()
 }
 
 struct RogueEngine {
