@@ -1,162 +1,243 @@
 use std::collections::{HashMap, HashSet};
 
-use doryen_rs::{App, AppOptions, Console, DoryenApi, Engine, InputApi, TextAlign, UpdateEvent};
+use iced::keyboard::key::Named;
+use iced::keyboard::{Key, Modifiers};
+use iced::widget::canvas;
+use iced::{Color, Element, Font, Length, Point, Size, Subscription, Task, Theme};
 
 use crate::actors::{CombatEvent, MonsterKind, StatusEffectEvent};
 use crate::core_types::{Position, TileFlags, DCOLS, DROWS};
 use crate::game_loop::{Command, Direction, GameLoop, StepOutcome};
 use crate::inventory_items::{InventoryEvent, ItemCategory};
 
-// Font PNG embedded directly in the binary at compile time.
-const FONT_BYTES: &[u8] = include_bytes!("terminal_8x8.png");
-
-// Console dimensions: 60 cols x 35 rows (32 map + 3 UI lines)
-const UI_ROWS: u32 = 3;
-// Pixel size of each font glyph in terminal_8x8.png
-const FONT_W: u32 = 8;
-const FONT_H: u32 = 8;
-// Scale factor for the window (2x makes it easier to read)
-const SCALE: u32 = 2;
+// Pixel width/height of each console cell (8-pixel glyph × 2× scale)
+const CELL_W: f32 = 16.0;
+const CELL_H: f32 = 16.0;
+// Font size used to render each glyph inside a cell
+const FONT_SIZE: f32 = 14.0;
+// Extra rows below the map for status and message lines
+const UI_ROWS: usize = 3;
 
 pub fn run(game: GameLoop) {
-    let con_w = DCOLS as u32;
-    let con_h = DROWS as u32 + UI_ROWS;
-    let font_path = extract_font_to_temp();
-    let mut app = App::new(AppOptions {
-        console_width: con_w,
-        console_height: con_h,
-        screen_width: con_w * FONT_W * SCALE,
-        screen_height: con_h * FONT_H * SCALE,
-        window_title: "Rusted Rogue".to_string(),
-        // Use an absolute path so native doryen-rs does not prepend "www/".
-        font_path,
-        vsync: true,
-        fullscreen: false,
-        show_cursor: false,
-        resizable: false,
-        intercept_close_request: false,
-        max_fps: 60,
-    });
-    app.set_engine(Box::new(RogueEngine { game, show_help: false, help_page: 0 }));
-    app.run();
+    let win_w = DCOLS as f32 * CELL_W;
+    let win_h = (DROWS + UI_ROWS) as f32 * CELL_H;
+
+    iced::application("Rusted Rogue", RogueApp::update, RogueApp::view)
+        .subscription(RogueApp::subscription)
+        .window(iced::window::Settings {
+            size: Size::new(win_w, win_h),
+            resizable: false,
+            ..Default::default()
+        })
+        .run_with(move || (RogueApp { game, show_help: false, help_page: 0 }, Task::none()))
+        .unwrap();
 }
 
-fn extract_font_to_temp() -> String {
-    let path = std::env::temp_dir().join("rusted_rogue_terminal_8x8.png");
-    std::fs::write(&path, FONT_BYTES).expect("Failed to write embedded font to temp directory");
-    path.to_string_lossy().into_owned()
-}
+// ---------------------------------------------------------------------------
+// Application state
+// ---------------------------------------------------------------------------
 
-struct RogueEngine {
+struct RogueApp {
     game: GameLoop,
     show_help: bool,
     help_page: usize,
 }
 
-impl Engine for RogueEngine {
-    fn update(&mut self, api: &mut dyn DoryenApi) -> Option<UpdateEvent> {
-        let input = api.input();
-        if input.close_requested() || self.game.state().quit_requested {
-            return Some(UpdateEvent::Exit);
+#[derive(Debug, Clone)]
+enum Message {
+    KeyPressed(Key, Modifiers),
+}
+
+impl RogueApp {
+    fn update(&mut self, message: Message) -> Task<Message> {
+        let Message::KeyPressed(key, _modifiers) = message;
+
+        if self.game.state().quit_requested {
+            return iced::exit();
         }
+
         if self.show_help {
-            if input.key_pressed("ArrowLeft") {
-                self.help_page = self.help_page.saturating_sub(1);
-            } else if input.key_pressed("ArrowRight") {
-                if self.help_page + 1 < HELP_PAGES.len() {
-                    self.help_page += 1;
+            match &key {
+                Key::Named(Named::ArrowLeft) => {
+                    self.help_page = self.help_page.saturating_sub(1);
                 }
-            } else if !input.text().is_empty()
-                || input.key_pressed("Escape")
-                || input.key_pressed("ArrowUp")
-                || input.key_pressed("ArrowDown")
-            {
-                self.show_help = false;
+                Key::Named(Named::ArrowRight) => {
+                    if self.help_page + 1 < HELP_PAGES.len() {
+                        self.help_page += 1;
+                    }
+                }
+                _ => {
+                    self.show_help = false;
+                }
             }
-            return None;
+            return Task::none();
         }
-        if input.text().chars().next() == Some('?') {
-            self.show_help = true;
-            self.help_page = 0;
-            return None;
+
+        if let Key::Character(s) = &key {
+            if s.as_str() == "?" {
+                self.show_help = true;
+                self.help_page = 0;
+                return Task::none();
+            }
         }
-        if let Some(cmd) = read_command(input) {
+
+        if let Some(cmd) = key_to_command(&key) {
             let outcome = self.game.step(cmd);
             if outcome == StepOutcome::Finished {
-                return Some(UpdateEvent::Exit);
+                return iced::exit();
             }
         }
-        None
+
+        Task::none()
     }
 
-    fn render(&mut self, api: &mut dyn DoryenApi) {
-        let con = api.con();
-        con.clear(None, Some((0, 0, 0, 255)), Some(b' ' as u16));
+    fn view(&self) -> Element<Message> {
+        canvas::Canvas::new(GameCanvas {
+            game: &self.game,
+            show_help: self.show_help,
+            help_page: self.help_page,
+        })
+        .width(Length::Fixed(DCOLS as f32 * CELL_W))
+        .height(Length::Fixed((DROWS + UI_ROWS) as f32 * CELL_H))
+        .into()
+    }
 
-        if self.show_help {
-            render_help_page(con, self.help_page);
-            return;
-        }
-
-        let lookups = RenderLookups::from_game(&self.game);
-
-        for row in 0..(DROWS as i32) {
-            for col in 0..(DCOLS as i32) {
-                let ch =
-                    render_cell(&self.game, Position::new(row as i16, col as i16), &lookups);
-                con.ascii(col, row, ch as u16);
-                con.fore(col, row, cell_color(ch));
-            }
-        }
-
-        let status = render_status(&self.game);
-        con.print(
-            0,
-            DROWS as i32,
-            &status,
-            TextAlign::Left,
-            Some((255, 255, 100, 255)),
-            None,
-        );
-
-        let message = render_last_message(&self.game);
-        con.print(
-            0,
-            DROWS as i32 + 1,
-            &message,
-            TextAlign::Left,
-            Some((255, 200, 150, 255)),
-            None,
-        );
-
+    fn subscription(&self) -> Subscription<Message> {
+        iced::keyboard::on_key_press(|key, modifiers| Some(Message::KeyPressed(key, modifiers)))
     }
 }
 
-fn read_command(input: &mut dyn InputApi) -> Option<Command> {
-    if input.key_pressed("Escape") {
-        return Some(Command::Quit);
+// ---------------------------------------------------------------------------
+// Canvas renderer
+// ---------------------------------------------------------------------------
+
+struct GameCanvas<'a> {
+    game: &'a GameLoop,
+    show_help: bool,
+    help_page: usize,
+}
+
+impl<'a> canvas::Program<Message> for GameCanvas<'a> {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &iced::Renderer,
+        _theme: &Theme,
+        bounds: iced::Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<canvas::Geometry<iced::Renderer>> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+
+        frame.fill(
+            &canvas::Path::rectangle(Point::ORIGIN, bounds.size()),
+            Color::BLACK,
+        );
+
+        if self.show_help {
+            render_help_page(&mut frame, self.help_page);
+        } else {
+            render_game(&mut frame, self.game);
+        }
+
+        vec![frame.into_geometry()]
     }
-    if input.key_pressed("ArrowLeft") {
-        return Some(Command::Move(Direction::Left));
+}
+
+// ---------------------------------------------------------------------------
+// Rendering helpers
+// ---------------------------------------------------------------------------
+
+fn cell_text(content: impl Into<String>, col: usize, row: usize, color: Color) -> canvas::Text {
+    canvas::Text {
+        content: content.into(),
+        position: Point::new(col as f32 * CELL_W, row as f32 * CELL_H),
+        color,
+        size: iced::Pixels(FONT_SIZE),
+        line_height: iced::widget::text::LineHeight::Absolute(iced::Pixels(CELL_H)),
+        font: Font::MONOSPACE,
+        horizontal_alignment: iced::alignment::Horizontal::Left,
+        vertical_alignment: iced::alignment::Vertical::Top,
+        shaping: iced::widget::text::Shaping::Basic,
     }
-    if input.key_pressed("ArrowRight") {
-        return Some(Command::Move(Direction::Right));
-    }
-    if input.key_pressed("ArrowUp") {
-        return Some(Command::Move(Direction::Up));
-    }
-    if input.key_pressed("ArrowDown") {
-        return Some(Command::Move(Direction::Down));
-    }
-    // text() returns characters typed this frame (respects shift for uppercase)
-    let text = input.text();
-    if let Some(ch) = text.chars().next() {
-        let cmd = GameLoop::parse_command(ch);
-        if cmd != Command::Unknown {
-            return Some(cmd);
+}
+
+fn render_game(frame: &mut canvas::Frame, game: &GameLoop) {
+    let lookups = RenderLookups::from_game(game);
+
+    for row in 0..DROWS {
+        for col in 0..DCOLS {
+            let ch = render_cell(game, Position::new(row as i16, col as i16), &lookups);
+            let color = cell_color(ch);
+            frame.fill_text(cell_text(ch.to_string(), col, row, color));
         }
     }
-    None
+
+    let status = render_status(game);
+    frame.fill_text(cell_text(status, 0, DROWS, Color::from_rgb(1.0, 1.0, 0.39)));
+
+    let message = render_last_message(game);
+    frame.fill_text(cell_text(message, 0, DROWS + 1, Color::from_rgb(1.0, 0.78, 0.59)));
+}
+
+fn render_help_page(frame: &mut canvas::Frame, page: usize) {
+    const GOLD:   Color = Color { r: 1.0,  g: 0.78, b: 0.20, a: 1.0 };
+    const CYAN:   Color = Color { r: 0.39, g: 0.86, b: 1.0,  a: 1.0 };
+    const YELLOW: Color = Color { r: 1.0,  g: 0.86, b: 0.31, a: 1.0 };
+    const WHITE:  Color = Color { r: 0.86, g: 0.86, b: 0.86, a: 1.0 };
+    const DIM:    Color = Color { r: 0.43, g: 0.43, b: 0.43, a: 1.0 };
+
+    let total = HELP_PAGES.len();
+
+    frame.fill_text(cell_text("RUSTED ROGUE  -  KEY BINDINGS", DCOLS / 2 - 14, 0, GOLD));
+    let indicator = format!("-- page {} of {} --", page + 1, total);
+    frame.fill_text(cell_text(indicator, DCOLS / 2 - 9, 1, DIM));
+
+    for (i, line) in HELP_PAGES[page].iter().enumerate() {
+        let row = i + 3;
+        match line {
+            HelpLine::Section(text) => {
+                frame.fill_text(cell_text(*text, 2, row, CYAN));
+            }
+            HelpLine::Binding(key, desc) => {
+                frame.fill_text(cell_text(*key, 4, row, YELLOW));
+                frame.fill_text(cell_text(*desc, 26, row, WHITE));
+            }
+            HelpLine::Empty => {}
+        }
+    }
+
+    let nav = match (page == 0, page + 1 == total) {
+        (_, true) => "<- ArrowLeft: prev page   |   any other key: close",
+        (true, _) => "any other key: close   |   ArrowRight: next page ->",
+        _ => "<- ArrowLeft: prev   |   ArrowRight: next ->   |   any key: close",
+    };
+    frame.fill_text(cell_text(nav, 2, DROWS + UI_ROWS - 1, DIM));
+}
+
+// ---------------------------------------------------------------------------
+// Input mapping
+// ---------------------------------------------------------------------------
+
+fn key_to_command(key: &Key) -> Option<Command> {
+    match key {
+        Key::Named(Named::Escape) => Some(Command::Quit),
+        Key::Named(Named::ArrowLeft) => Some(Command::Move(Direction::Left)),
+        Key::Named(Named::ArrowRight) => Some(Command::Move(Direction::Right)),
+        Key::Named(Named::ArrowUp) => Some(Command::Move(Direction::Up)),
+        Key::Named(Named::ArrowDown) => Some(Command::Move(Direction::Down)),
+        Key::Character(s) => {
+            if let Some(ch) = s.chars().next() {
+                let cmd = GameLoop::parse_command(ch);
+                if cmd != Command::Unknown {
+                    return Some(cmd);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -215,64 +296,23 @@ const HELP_PAGE_2: &[HelpLine] = &[
 
 const HELP_PAGES: &[&[HelpLine]] = &[HELP_PAGE_1, HELP_PAGE_2];
 
-fn render_help_page(con: &mut Console, page: usize) {
-    const GOLD:   (u8, u8, u8, u8) = (255, 200,  50, 255);
-    const CYAN:   (u8, u8, u8, u8) = (100, 220, 255, 255);
-    const YELLOW: (u8, u8, u8, u8) = (255, 220,  80, 255);
-    const WHITE:  (u8, u8, u8, u8) = (220, 220, 220, 255);
-    const DIM:    (u8, u8, u8, u8) = (110, 110, 110, 255);
-
-    let total = HELP_PAGES.len();
-    let cx = DCOLS as i32 / 2;
-
-    // Row 0: title
-    con.print(cx, 0, "RUSTED ROGUE  -  KEY BINDINGS", TextAlign::Center, Some(GOLD), None);
-    // Row 1: page indicator
-    let indicator = format!("-- page {} of {} --", page + 1, total);
-    con.print(cx, 1, &indicator, TextAlign::Center, Some(DIM), None);
-
-    // Rows 3+: content
-    for (i, line) in HELP_PAGES[page].iter().enumerate() {
-        let row = (i + 3) as i32;
-        match line {
-            HelpLine::Section(text) => {
-                con.print(2, row, text, TextAlign::Left, Some(CYAN), None);
-            }
-            HelpLine::Binding(key, desc) => {
-                con.print(4,  row, key,  TextAlign::Left, Some(YELLOW), None);
-                con.print(26, row, desc, TextAlign::Left, Some(WHITE),  None);
-            }
-            HelpLine::Empty => {}
-        }
-    }
-
-    // Last row: navigation hint
-    let nav = match (page == 0, page + 1 == total) {
-        (_, true)  => "<- ArrowLeft: prev page   |   any other key: close",
-        (true, _)  => "any other key: close   |   ArrowRight: next page ->",
-        _          => "<- ArrowLeft: prev   |   ArrowRight: next ->   |   any other key: close",
-    };
-    let last_row = (DROWS as u32 + UI_ROWS - 1) as i32;
-    con.print(cx, last_row, nav, TextAlign::Center, Some(DIM), None);
-}
-
-fn cell_color(ch: char) -> (u8, u8, u8, u8) {
+fn cell_color(ch: char) -> Color {
     match ch {
-        '@' => (255, 255, 255, 255),          // player: white
-        'A'..='Z' | 'a'..='z' => (220, 80, 80, 255), // monsters: red
-        ')' | ']' => (100, 200, 255, 255),    // weapons / armor: cyan
-        '=' => (255, 210, 60, 255),           // rings: gold
-        '!' => (200, 100, 255, 255),          // potions: purple
-        '/' => (100, 255, 200, 255),          // wands: teal
-        '?' => (230, 230, 100, 255),          // scrolls: yellow
-        '%' => (100, 200, 100, 255),          // food: green
-        '-' | '|' => (160, 160, 160, 255),   // walls: grey
-        '.' => (70, 70, 90, 255),             // floor: dark blue-grey
-        '#' => (110, 80, 50, 255),            // tunnel: brown
-        '+' => (180, 130, 60, 255),           // door: tan
-        '>' => (255, 210, 50, 255),           // stairs: gold
-        '^' => (255, 80, 80, 255),            // trap: bright red
-        _ => (180, 180, 180, 255),
+        '@' => Color::WHITE,
+        'A'..='Z' | 'a'..='z' => Color::from_rgb(0.86, 0.31, 0.31),
+        ')' | ']' => Color::from_rgb(0.39, 0.78, 1.0),
+        '=' => Color::from_rgb(1.0, 0.82, 0.24),
+        '!' => Color::from_rgb(0.78, 0.39, 1.0),
+        '/' => Color::from_rgb(0.39, 1.0, 0.78),
+        '?' => Color::from_rgb(0.90, 0.90, 0.39),
+        '%' => Color::from_rgb(0.39, 0.78, 0.39),
+        '-' | '|' => Color::from_rgb(0.63, 0.63, 0.63),
+        '.' => Color::from_rgb(0.27, 0.27, 0.35),
+        '#' => Color::from_rgb(0.43, 0.31, 0.20),
+        '+' => Color::from_rgb(0.71, 0.51, 0.24),
+        '>' => Color::from_rgb(1.0, 0.82, 0.20),
+        '^' => Color::from_rgb(1.0, 0.31, 0.31),
+        _ => Color::from_rgb(0.71, 0.71, 0.71),
     }
 }
 
