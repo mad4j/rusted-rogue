@@ -140,6 +140,7 @@ impl DungeonGrid {
 pub struct GeneratedLevel {
     pub grid: DungeonGrid,
     pub rooms: Vec<Room>,
+    pub stairs_position: Option<Position>,
 }
 
 impl GeneratedLevel {

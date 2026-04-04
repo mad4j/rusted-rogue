@@ -1,4 +1,4 @@
-use crate::core_types::{TileFlags, MAXROOMS};
+use crate::core_types::{Position, TileFlags, MAXROOMS};
 use crate::rng::GameRng;
 
 use super::maze::add_mazes;
@@ -6,6 +6,26 @@ use super::passage::{connect_rooms, door_on_room_side, draw_simple_passage, mayb
 use super::rooms::{draw_room, make_big_room, make_room_in_slot, set_room_door_position};
 use super::slots::{mask_slot, same_col, same_row, slot_center};
 use super::types::{DungeonGrid, GeneratedLevel, Room, SlotKind, DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP};
+
+fn place_stairs(grid: &mut DungeonGrid, seed: i32, level_depth: i16, rooms: &[Room]) -> Option<Position> {
+    if rooms.is_empty() {
+        return None;
+    }
+    // Use an independent RNG so stair placement does not disturb the main level
+    // generation RNG state (keeping existing game determinism intact).
+    let mut rng = GameRng::new(seed.wrapping_add(level_depth as i32).wrapping_mul(0x1337));
+    // Prefer placing stairs in a room other than the spawn room (index 0)
+    let room_idx = if rooms.len() > 1 {
+        rng.get_rand(1, (rooms.len() - 1) as i32) as usize
+    } else {
+        0
+    };
+    let room = &rooms[room_idx];
+    let row = rng.get_rand(room.top_row as i32, room.bottom_row as i32) as i16;
+    let col = rng.get_rand(room.left_col as i32, room.right_col as i32) as i16;
+    let _ = grid.set(row, col, TileFlags::STAIRS);
+    Some(Position::new(row, col))
+}
 
 fn required_room_group(rng: &mut GameRng) -> [usize; 3] {
     match rng.get_rand(0, 5) {
@@ -227,7 +247,9 @@ pub fn generate_level_with_depth(rng: &mut GameRng, level_depth: i16, party_coun
     let is_big_room = level_depth == party_counter && rng.rand_percent(1);
     if is_big_room {
         let big_room = make_big_room(rng, &mut grid);
-        return GeneratedLevel { grid, rooms: vec![big_room] };
+        let rooms = vec![big_room];
+        let stairs_position = place_stairs(&mut grid, rng.seed(), level_depth, &rooms);
+        return GeneratedLevel { grid, rooms, stairs_position };
     }
 
     let required = required_room_group(rng);
@@ -280,8 +302,9 @@ pub fn generate_level_with_depth(rng: &mut GameRng, level_depth: i16, party_coun
     fill_out_level(&mut grid, rng, &mut slot_rooms, &mut slot_kinds, level_depth);
 
     let rooms: Vec<Room> = slot_rooms.into_iter().flatten().collect();
+    let stairs_position = place_stairs(&mut grid, rng.seed(), level_depth, &rooms);
 
-    GeneratedLevel { grid, rooms }
+    GeneratedLevel { grid, rooms, stairs_position }
 }
 
 pub fn generate_level(rng: &mut GameRng) -> GeneratedLevel {

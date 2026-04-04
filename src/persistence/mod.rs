@@ -446,7 +446,15 @@ impl LevelSnapshot {
             })
             .collect();
 
-        Ok(GeneratedLevel { grid, rooms })
+        let stairs_position = (0..DROWS as i16)
+            .flat_map(|row| (0..DCOLS as i16).map(move |col| (row, col)))
+            .find(|&(row, col)| {
+                grid.get(row, col)
+                    .is_some_and(|f| f.contains(TileFlags::STAIRS))
+            })
+            .map(|(row, col)| crate::core_types::Position::new(row, col));
+
+        Ok(GeneratedLevel { grid, rooms, stairs_position })
     }
 }
 
