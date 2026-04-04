@@ -3,12 +3,16 @@ use std::collections::{HashMap, HashSet};
 use iced::keyboard::key::Named;
 use iced::keyboard::{Key, Modifiers};
 use iced::widget::canvas;
-use iced::{Color, Element, Font, Length, Point, Size, Subscription, Task, Theme};
+use iced::widget::image as img_widget;
+use iced::{Color, ContentFit, Element, Font, Length, Point, Size, Subscription, Task, Theme};
 
 use crate::actors::{CombatEvent, MonsterKind, StatusEffectEvent};
 use crate::core_types::{Position, TileFlags, DCOLS, DROWS};
 use crate::game_loop::{Command, Direction, GameLoop, StepOutcome};
 use crate::inventory_items::{InventoryEvent, ItemCategory};
+
+// Splash screen PNG embedded at compile time
+const SPLASH_BYTES: &[u8] = include_bytes!("../../resources/splash.png");
 
 // Pixel width/height of each console cell (8-pixel glyph × 2× scale)
 const CELL_W: f32 = 16.0;
@@ -29,7 +33,10 @@ pub fn run(game: GameLoop) {
             resizable: false,
             ..Default::default()
         })
-        .run_with(move || (RogueApp { game, show_help: false, help_page: 0 }, Task::none()))
+        .run_with(move || {
+            let splash_handle = img_widget::Handle::from_bytes(SPLASH_BYTES);
+            (RogueApp { game, show_help: false, help_page: 0, screen: Screen::Splash, splash_handle }, Task::none())
+        })
         .unwrap();
 }
 
@@ -37,10 +44,17 @@ pub fn run(game: GameLoop) {
 // Application state
 // ---------------------------------------------------------------------------
 
+enum Screen {
+    Splash,
+    Game,
+}
+
 struct RogueApp {
     game: GameLoop,
     show_help: bool,
     help_page: usize,
+    screen: Screen,
+    splash_handle: img_widget::Handle,
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +65,11 @@ enum Message {
 impl RogueApp {
     fn update(&mut self, message: Message) -> Task<Message> {
         let Message::KeyPressed(key, _modifiers) = message;
+
+        if matches!(self.screen, Screen::Splash) {
+            self.screen = Screen::Game;
+            return Task::none();
+        }
 
         if self.game.state().quit_requested {
             return iced::exit();
@@ -92,14 +111,21 @@ impl RogueApp {
     }
 
     fn view(&self) -> Element<Message> {
-        canvas::Canvas::new(GameCanvas {
-            game: &self.game,
-            show_help: self.show_help,
-            help_page: self.help_page,
-        })
-        .width(Length::Fixed(DCOLS as f32 * CELL_W))
-        .height(Length::Fixed((DROWS + UI_ROWS) as f32 * CELL_H))
-        .into()
+        match self.screen {
+            Screen::Splash => img_widget::Image::new(self.splash_handle.clone())
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .content_fit(ContentFit::Contain)
+                .into(),
+            Screen::Game => canvas::Canvas::new(GameCanvas {
+                game: &self.game,
+                show_help: self.show_help,
+                help_page: self.help_page,
+            })
+            .width(Length::Fixed(DCOLS as f32 * CELL_W))
+            .height(Length::Fixed((DROWS + UI_ROWS) as f32 * CELL_H))
+            .into(),
+        }
     }
 
     fn subscription(&self) -> Subscription<Message> {
