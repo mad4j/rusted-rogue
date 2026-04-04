@@ -11,7 +11,7 @@ use crate::inventory_items::{
 };
 use crate::persistence;
 use crate::rng::GameRng;
-use crate::world_gen::{generate_level, GeneratedLevel};
+use crate::world_gen::{generate_level_with_depth, GeneratedLevel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
@@ -78,6 +78,7 @@ pub struct GameState {
     pub last_inventory_events: Vec<InventoryEvent>,
     pub last_move_blocked: bool,
     pub last_system_message: Option<String>,
+    pub party_counter: i16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,7 +110,8 @@ fn is_adjacent(left: Position, right: Position) -> bool {
 impl GameLoop {
     pub fn new(seed: i32) -> Self {
         let mut rng = GameRng::new(seed);
-        let current_level = generate_level(&mut rng);
+        let party_counter = rng.get_rand(1, 10) as i16;
+        let current_level = generate_level_with_depth(&mut rng, 1, party_counter);
         let player_position = current_level.spawn_position();
         let monsters = spawn_basic_monsters(&current_level, &mut rng, player_position);
 
@@ -151,6 +153,7 @@ impl GameLoop {
                 last_inventory_events: Vec::new(),
                 last_move_blocked: false,
                 last_system_message: None,
+                party_counter,
             },
             current_level,
         }

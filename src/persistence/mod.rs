@@ -113,6 +113,8 @@ struct GameStateSnapshot {
     last_inventory_events: Vec<InventoryEventSnapshot>,
     last_move_blocked: bool,
     last_system_message: Option<String>,
+    #[serde(default)]
+    party_counter: i16,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -521,6 +523,7 @@ impl GameStateSnapshot {
                 .collect(),
             last_move_blocked: state.last_move_blocked,
             last_system_message: state.last_system_message.clone(),
+            party_counter: state.party_counter,
         }
     }
 
@@ -589,6 +592,7 @@ impl GameStateSnapshot {
                 .collect::<io::Result<Vec<_>>>()?,
             last_move_blocked: self.last_move_blocked,
             last_system_message: self.last_system_message,
+            party_counter: self.party_counter,
         })
     }
 }

@@ -33,7 +33,7 @@ fn main() {
     
     for level_num in 1..=num_levels {
         let mut rng = GameRng::new(seed + (level_num as i32 - 1) * 1000);
-        let generated = generate_level_with_depth(&mut rng, level_num as i16);
+        let generated = generate_level_with_depth(&mut rng, level_num as i16, i16::MAX);
         
         println!("┌─ Level {} ─────────────────────────────────────────────────────────────────────┐", level_num);
         println!();
