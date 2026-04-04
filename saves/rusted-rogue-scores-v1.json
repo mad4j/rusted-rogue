@@ -154,12 +154,12 @@
       "recorded_at_unix": 1774808368
     },
     {
-      "score": 1012,
+      "score": 1015,
       "level": 1,
-      "turns": 12,
+      "turns": 15,
       "monsters_defeated": 0,
       "outcome": "defeated",
-      "recorded_at_unix": 1775292726
+      "recorded_at_unix": 1775308574
     }
   ]
 }

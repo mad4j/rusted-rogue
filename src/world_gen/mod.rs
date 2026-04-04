@@ -37,7 +37,7 @@ mod tests {
     fn out_of_bounds_is_rejected() {
         let mut grid = DungeonGrid::new();
         assert!(!grid.set(-1, 0, TileFlags::FLOOR));
-        assert_eq!(grid.get(0, 80), None);
+        assert_eq!(grid.get(0, DCOLS as i16), None);
     }
 
     #[test]

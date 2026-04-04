@@ -8,7 +8,7 @@ use crate::core_types::{Position, TileFlags, DCOLS, DROWS};
 use crate::game_loop::{Command, Direction, GameLoop, StepOutcome};
 use crate::inventory_items::{InventoryEvent, ItemCategory};
 
-// Console dimensions: 80 cols x 27 rows (24 map + 3 UI lines)
+// Console dimensions: 60 cols x 35 rows (32 map + 3 UI lines)
 const UI_ROWS: u32 = 3;
 // Pixel size of each font glyph in terminal_8x8.png
 const FONT_W: u32 = 8;
