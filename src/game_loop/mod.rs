@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::actors::{
     attack_monster, spawn_basic_monsters, tick_monsters, CombatEvent, Monster, MonsterKind,
     SpecialHit, StatusEffectEvent,
@@ -11,7 +13,7 @@ use crate::inventory_items::{
 };
 use crate::persistence;
 use crate::rng::GameRng;
-use crate::world_gen::{generate_level_with_depth, GeneratedLevel};
+use crate::world_gen::{generate_level_with_depth, DungeonGrid, GeneratedLevel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
@@ -79,6 +81,7 @@ pub struct GameState {
     pub last_move_blocked: bool,
     pub last_system_message: Option<String>,
     pub party_counter: i16,
+    pub explored: HashSet<Position>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,7 +118,7 @@ impl GameLoop {
         let player_position = current_level.spawn_position();
         let monsters = spawn_basic_monsters(&current_level, &mut rng, player_position);
 
-        Self {
+        let mut game = Self {
             state: GameState {
                 level: 1,
                 turns: 0,
@@ -154,9 +157,12 @@ impl GameLoop {
                 last_move_blocked: false,
                 last_system_message: None,
                 party_counter,
+                explored: HashSet::new(),
             },
             current_level,
-        }
+        };
+        game.update_explored();
+        game
     }
 
     pub fn state(&self) -> &GameState {
@@ -176,6 +182,28 @@ impl GameLoop {
         Self {
             state,
             current_level,
+        }
+    }
+
+    fn update_explored(&mut self) {
+        let pos = self.state.player_position;
+        if let Some(room) = self.current_level.rooms.iter().find(|r| r.contains(pos.row, pos.col)) {
+            for row in (room.top_row - 1)..=(room.bottom_row + 1) {
+                for col in (room.left_col - 1)..=(room.right_col + 1) {
+                    if DungeonGrid::in_bounds(row, col) {
+                        self.state.explored.insert(Position::new(row, col));
+                    }
+                }
+            }
+        } else {
+            for drow in -1i16..=1 {
+                for dcol in -1i16..=1 {
+                    let p = Position::new(pos.row + drow, pos.col + dcol);
+                    if DungeonGrid::in_bounds(p.row, p.col) {
+                        self.state.explored.insert(p);
+                    }
+                }
+            }
         }
     }
 
@@ -284,6 +312,7 @@ impl GameLoop {
         if self.current_level.grid.is_walkable(target.row, target.col) {
             self.state.player_position = target;
             self.state.last_move_blocked = false;
+            self.update_explored();
             PlayerAction::Moved
         } else {
             self.state.last_move_blocked = true;

@@ -115,6 +115,8 @@ struct GameStateSnapshot {
     last_system_message: Option<String>,
     #[serde(default)]
     party_counter: i16,
+    #[serde(default)]
+    explored: Vec<PositionSnapshot>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -524,6 +526,11 @@ impl GameStateSnapshot {
             last_move_blocked: state.last_move_blocked,
             last_system_message: state.last_system_message.clone(),
             party_counter: state.party_counter,
+            explored: state
+                .explored
+                .iter()
+                .map(|p| PositionSnapshot::from_position(*p))
+                .collect(),
         }
     }
 
@@ -593,6 +600,11 @@ impl GameStateSnapshot {
             last_move_blocked: self.last_move_blocked,
             last_system_message: self.last_system_message,
             party_counter: self.party_counter,
+            explored: self
+                .explored
+                .into_iter()
+                .map(PositionSnapshot::into_position)
+                .collect(),
         })
     }
 }

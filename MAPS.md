@@ -12,7 +12,7 @@ Derived from `original/rogue-libc5-ncurses/rogue/level.c` and `rogue.h`.
 - Slot bounds (top_row, bottom_row, left_col, right_col):
 
 | Slot | Rows | Cols |
-|------|------|------|
+| ------ | ------ | ------ |
 | 0 | MIN_ROW (1) .. ROW1-1 (6) | 0 .. COL1-1 (25) |
 | 1 | MIN_ROW .. ROW1-1 | COL1+1 (27) .. COL2-1 (51) |
 | 2 | MIN_ROW .. ROW1-1 | COL2+1 (53) .. DCOLS-1 (79) |
@@ -30,7 +30,7 @@ Derived from `original/rogue-libc5-ncurses/rogue/level.c` and `rogue.h`.
 One of 6 patterns is chosen randomly; the 3 slots in the pattern are **guaranteed to exist**:
 
 | Pattern ID | Slots | Description |
-|------------|-------|-------------|
+| ------------ | ------- | ------------- |
 | 0 | 0, 1, 2 | top row |
 | 1 | 3, 4, 5 | middle row |
 | 2 | 6, 7, 8 | bottom row |
@@ -45,6 +45,7 @@ All other slots have a **40% chance of being skipped** (`rand_percent(40)`).
 ## Room drawing (`make_room`)
 
 For each non-skipped slot:
+
 - Random **height**: `get_rand(4, slot_height)`
 - Random **width**: `get_rand(7, slot_width - 2)`
 - Random **row/col offset** to position the room within the slot bounds
@@ -100,6 +101,7 @@ Connection order uses a shuffled `random_rooms[]` array. For each slot `i` in th
 ### Passage drawing (`draw_simple_passage`)
 
 L-shaped tunnel between two points:
+
 - Horizontal then vertical segment (or vertical then horizontal for UP/DOWN direction)
 - Random **middle bend point** between the two endpoints
 - `do { draw_simple_passage(...) } while (rand_percent(4))` — ~4% chance of drawing an additional passage between the same two points
@@ -125,6 +127,7 @@ After main connections, isolated slots are resolved:
 3. `r_de` (last dead-end found during recursion): call `fill_it(r_de, do_rec_de=0)` as a second pass without further recursion.
 
 **`fill_it` logic**:
+
 - Looks for a neighbouring `R_ROOM | R_MAZE` slot reachable via offsets.
 - Uses `mask_room` to find an existing `TUNNEL` tile in the slot as start point; falls back to centre of slot.
 - Places a door on the target room and draws a `draw_simple_passage` to connect.
@@ -144,8 +147,9 @@ Applies `HIDDEN` flag to random `TUNNEL` tiles within a bounding box.
 - For each repetition: up to 10 attempts to find a `TUNNEL` tile at a random position within the box (with 1-cell margin if the dimension allows).
 
 Called from:
+
 | Caller | Repetitions | Condition |
-|--------|-------------|-----------|
+| -------- | ------------- | ----------- |
 | `add_mazes` (per maze room) | `get_rand(0, 2)` | always |
 | `draw_simple_passage` | 1 | `rand_percent(12)` |
 
@@ -167,7 +171,7 @@ BFS/flood-fill from the first connected room; verifies that every `R_ROOM | R_MA
 ## Constants reference
 
 | Constant | Value | Meaning |
-|----------|-------|---------|
+| ---------- | ------- | --------- |
 | `MAXROOMS` | 9 | Total dungeon slots |
 | `DROWS` | 24 | Screen rows |
 | `DCOLS` | 80 | Screen columns |

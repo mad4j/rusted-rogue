@@ -85,6 +85,10 @@ fn render_cell(game: &GameLoop, position: Position, lookups: &RenderLookups) -> 
         return '@';
     }
 
+    if !game.state().explored.contains(&position) {
+        return ' ';
+    }
+
     if let Some(monster_char) = lookups.monsters.get(&position) {
         return *monster_char;
     }
