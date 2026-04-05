@@ -11,7 +11,7 @@ use iced::widget::image as img_widget;
 use iced::{ContentFit, Element, Length, Size, Subscription, Task};
 
 use crate::core_types::{DCOLS, DROWS};
-use crate::game_loop::{GameLoop, StepOutcome};
+use crate::game_loop::{Command, GameLoop, StepOutcome};
 
 use canvas::GameCanvas;
 
@@ -39,7 +39,7 @@ pub fn run(game: GameLoop) {
         })
         .run_with(move || {
             let splash_handle = img_widget::Handle::from_bytes(SPLASH_BYTES);
-            (RogueApp { game, show_help: false, help_page: 0, screen: Screen::Splash, splash_handle }, Task::none())
+            (RogueApp { game, show_help: false, help_page: 0, screen: Screen::Splash, splash_handle, show_inventory: false }, Task::none())
         })
         .unwrap();
 }
@@ -59,6 +59,7 @@ struct RogueApp {
     help_page: usize,
     screen: Screen,
     splash_handle: img_widget::Handle,
+    show_inventory: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -96,10 +97,40 @@ impl RogueApp {
             return Task::none();
         }
 
+        // Dismiss plain inventory browse.
+        if self.show_inventory {
+            self.show_inventory = false;
+            return Task::none();
+        }
+
+        // Item-selection mode: route letter keys or Escape to the game loop.
+        if self.game.state().pending_item_action.is_some() {
+            match &key {
+                Key::Named(Named::Escape) => {
+                    let _ = self.game.step(Command::CancelItemSelect);
+                }
+                Key::Character(s) => {
+                    let ch = s.chars().next().unwrap_or('\0');
+                    if ch.is_ascii_lowercase() {
+                        let outcome = self.game.step(Command::SelectItem(ch));
+                        if outcome == StepOutcome::Finished {
+                            return iced::exit();
+                        }
+                    }
+                }
+                _ => {}
+            }
+            return Task::none();
+        }
+
         if let Key::Character(s) = &key {
             if s.as_str() == "?" {
                 self.show_help = true;
                 self.help_page = 0;
+                return Task::none();
+            }
+            if s.as_str() == "i" {
+                self.show_inventory = true;
                 return Task::none();
             }
         }
@@ -125,6 +156,7 @@ impl RogueApp {
                 game: &self.game,
                 show_help: self.show_help,
                 help_page: self.help_page,
+                show_inventory: self.show_inventory,
             })
             .width(Length::Fixed(DCOLS as f32 * CELL_W))
             .height(Length::Fixed((DROWS + UI_ROWS) as f32 * CELL_H))

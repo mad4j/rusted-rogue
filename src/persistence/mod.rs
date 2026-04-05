@@ -9,7 +9,7 @@ use crate::actors::{CombatEvent, Monster, MonsterKind, SpecialHit, StatusEffectE
 use crate::core_types::{Position, TileFlags, TrapKind, DCOLS, DROWS};
 use crate::game_loop::{Command, Direction, GameLoop, GameState};
 use crate::inventory_items::{
-    EquipmentSlot, FloorItem, InventoryEntry, InventoryEvent, InventoryItem,
+    next_avail_ichar, EquipmentSlot, FloorItem, InventoryEntry, InventoryEvent, InventoryItem,
 };
 use crate::world_gen::{DoorLink, DungeonGrid, GeneratedLevel, Room};
 
@@ -171,6 +171,9 @@ struct InventoryEntrySnapshot {
     id: u64,
     item_name: String,
     equipped_slot: Option<String>,
+    /// Pack letter ('a'–'z').  None for saves written before this field was added.
+    #[serde(default)]
+    ichar: Option<char>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -574,11 +577,20 @@ impl GameStateSnapshot {
                 .into_iter()
                 .map(CombatEventSnapshot::into_event)
                 .collect::<io::Result<Vec<_>>>()?,
-            inventory: self
-                .inventory
-                .into_iter()
-                .map(InventoryEntrySnapshot::into_entry)
-                .collect::<io::Result<Vec<_>>>()?,
+            inventory: {
+                let mut inv = self
+                    .inventory
+                    .into_iter()
+                    .map(InventoryEntrySnapshot::into_entry)
+                    .collect::<io::Result<Vec<_>>>()?;
+                // Reassign pack letters missing in older save files.
+                for i in 0..inv.len() {
+                    if inv[i].ichar == '\0' {
+                        inv[i].ichar = next_avail_ichar(&inv);
+                    }
+                }
+                inv
+            },
             floor_items: self
                 .floor_items
                 .into_iter()
@@ -608,6 +620,7 @@ impl GameStateSnapshot {
             last_move_blocked: self.last_move_blocked,
             last_system_message: self.last_system_message,
             party_counter: self.party_counter,
+            pending_item_action: None,
             explored: self
                 .explored
                 .into_iter()
@@ -757,6 +770,7 @@ impl InventoryEntrySnapshot {
             equipped_slot: entry
                 .equipped_slot
                 .map(|slot| equipment_slot_to_string(slot).to_string()),
+            ichar: Some(entry.ichar),
         }
     }
 
@@ -776,6 +790,8 @@ impl InventoryEntrySnapshot {
                 .as_deref()
                 .map(equipment_slot_from_string)
                 .transpose()?,
+            // '\0' signals "needs reassignment" done after all entries are loaded.
+            ichar: self.ichar.unwrap_or('\0'),
         })
     }
 }

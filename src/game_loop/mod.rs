@@ -6,10 +6,9 @@ use crate::actors::{
 };
 use crate::core_types::{EXP_LEVELS, INIT_FOOD, INIT_STRENGTH, Position, TrapKind};
 use crate::inventory_items::{
-    apply_item_effects, drop_first_item, equip_first_armor, equip_first_weapon, pick_up_item,
-    put_on_first_ring, remove_first_item_by_category, remove_ring, total_armor_bonus,
-    total_attack_bonus, unequip_armor, FloorItem, InventoryEntry, InventoryEvent, InventoryItem,
-    ItemCategory,
+    apply_item_effects, drop_by_ichar, equip_by_ichar, pick_up_item, remove_item_by_ichar,
+    total_armor_bonus, total_attack_bonus, unequip_by_ichar, FloorItem, InventoryEntry,
+    InventoryEvent, InventoryItem, ItemCategory,
 };
 use crate::persistence;
 use crate::rng::GameRng;
@@ -48,8 +47,82 @@ pub enum Command {
     Save,
     Load,
     Descend,
+    /// Sent by the UI when the player presses a letter in item-selection mode.
+    SelectItem(char),
+    /// Sent by the UI when the player cancels item selection (Escape).
+    CancelItemSelect,
     Noop,
     Unknown,
+}
+
+/// Which inventory action is waiting for the player to pick an item by letter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PendingItemAction {
+    Drop,
+    Wield,
+    WearArmor,
+    TakeOffArmor,
+    PutOnRing,
+    RemoveRing,
+    Quaff,
+    ReadScroll,
+    Eat,
+    Zap,
+    Throw,
+}
+
+impl PendingItemAction {
+    pub fn prompt(self) -> &'static str {
+        match self {
+            Self::Drop => "drop what?",
+            Self::Wield => "what do you want to wield?",
+            Self::WearArmor => "what do you want to wear?",
+            Self::TakeOffArmor => "what armor do you take off?",
+            Self::PutOnRing => "what ring do you put on?",
+            Self::RemoveRing => "what ring do you remove?",
+            Self::Quaff => "which potion do you want to quaff?",
+            Self::ReadScroll => "which scroll do you want to read?",
+            Self::Eat => "which food do you want to eat?",
+            Self::Zap => "which wand do you want to use?",
+            Self::Throw => "what do you want to throw?",
+        }
+    }
+
+    pub fn filter_category(self) -> Option<ItemCategory> {
+        match self {
+            Self::Wield | Self::Throw => Some(ItemCategory::Weapon),
+            Self::WearArmor | Self::TakeOffArmor => Some(ItemCategory::Armor),
+            Self::PutOnRing | Self::RemoveRing => Some(ItemCategory::Ring),
+            Self::Quaff => Some(ItemCategory::Potion),
+            Self::ReadScroll => Some(ItemCategory::Scroll),
+            Self::Eat => Some(ItemCategory::Food),
+            Self::Zap => Some(ItemCategory::Wand),
+            Self::Drop => None,
+        }
+    }
+
+    /// True for actions that require the item to already be equipped
+    /// (TakeOffArmor, RemoveRing).
+    pub fn equipped_only(self) -> bool {
+        matches!(self, Self::TakeOffArmor | Self::RemoveRing)
+    }
+
+    /// Return a message for when there are no matching items.
+    pub fn empty_message(self) -> &'static str {
+        match self {
+            Self::Drop => "you have nothing to drop",
+            Self::Wield => "you have nothing to wield",
+            Self::WearArmor => "you have no armor to wear",
+            Self::TakeOffArmor => "you are not wearing any armor",
+            Self::PutOnRing => "you have no rings to put on",
+            Self::RemoveRing => "you are wearing no rings",
+            Self::Quaff => "you have no potions",
+            Self::ReadScroll => "you have no scrolls",
+            Self::Eat => "you have no food",
+            Self::Zap => "you have no wands",
+            Self::Throw => "you have nothing to throw",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +131,9 @@ pub struct GameState {
     pub turns: u64,
     pub quit_requested: bool,
     pub pending_direction: Option<Direction>,
+    /// Set when a command needs the player to pick an item by letter before
+    /// it can execute.  The renderer uses this to display the item overlay.
+    pub pending_item_action: Option<PendingItemAction>,
     pub player_position: Position,
     pub player_hit_points: i16,
     pub player_max_hit_points: i16,
@@ -125,6 +201,7 @@ impl GameLoop {
                 turns: 0,
                 quit_requested: false,
                 pending_direction: None,
+                pending_item_action: None,
                 player_position,
                 player_hit_points: 12,
                 player_max_hit_points: 12,
@@ -322,8 +399,10 @@ impl GameLoop {
         }
     }
 
-    fn try_inventory_action(&mut self, command: Command) -> PlayerAction {
-        let events = match command {
+    /// Immediate inventory actions (PickUp, IdentifyTrap) that don't need item
+    /// letter selection.
+    fn try_immediate_inventory_action(&mut self, command: Command) -> PlayerAction {
+        let events: Option<Vec<InventoryEvent>> = match command {
             Command::PickUp => pick_up_item(
                 &mut self.state.inventory,
                 &mut self.state.floor_items,
@@ -331,150 +410,6 @@ impl GameLoop {
                 self.state.player_position,
             )
             .map(|event| vec![event]),
-            Command::Drop => drop_first_item(
-                &mut self.state.inventory,
-                &mut self.state.floor_items,
-                self.state.player_position,
-            ),
-            Command::Wield => equip_first_weapon(&mut self.state.inventory),
-            Command::WearArmor => equip_first_armor(&mut self.state.inventory),
-            Command::TakeOffArmor => {
-                unequip_armor(&mut self.state.inventory).map(|event| vec![event])
-            }
-            Command::PutOnRing => put_on_first_ring(&mut self.state.inventory),
-            Command::RemoveRing => remove_ring(&mut self.state.inventory).map(|event| vec![event]),
-            Command::Quaff => {
-                remove_first_item_by_category(&mut self.state.inventory, ItemCategory::Potion).map(
-                    |entry| {
-                        let msg = match entry.item.name {
-                            "healing potion" => {
-                                self.state.player_hit_points = (self.state.player_hit_points + 4)
-                                    .min(self.state.player_max_hit_points);
-                                "You feel better."
-                            }
-                            "potion of extra healing" => {
-                                self.state.player_hit_points = (self.state.player_hit_points + 8)
-                                    .min(self.state.player_max_hit_points);
-                                "You feel much better."
-                            }
-                            "potion of increase strength" => "You feel stronger.",
-                            "potion of restore strength" => "You feel your strength return.",
-                            "potion of poison" => "You feel very sick.",
-                            "potion of raise level" => "You feel more experienced.",
-                            "potion of blindness" => "A cloud of darkness surrounds you.",
-                            "potion of hallucination" => "Oh wow, everything seems so cosmic!",
-                            "potion of detect monster" => "You sense the presence of monsters.",
-                            "potion of detect objects" => "You sense the presence of objects.",
-                            "potion of confusion" => "You feel confused.",
-                            "potion of levitation" => "You start to float in the air.",
-                            "potion of haste self" => "You feel yourself moving faster.",
-                            "potion of see invisible" => "Your vision becomes clear.",
-                            _ => "You drink the potion.",
-                        };
-                        self.state.last_system_message = Some(msg.to_string());
-                        vec![InventoryEvent::Used {
-                            name: entry.item.name,
-                        }]
-                    },
-                )
-            }
-            Command::ReadScroll => {
-                remove_first_item_by_category(&mut self.state.inventory, ItemCategory::Scroll).map(
-                    |entry| {
-                        let msg = match entry.item.name {
-                            "scroll of protect armor" => "Your armor glows faintly.",
-                            "scroll of hold monster" => "The monsters are frozen.",
-                            "scroll of enchant weapon" => "Your weapon glows blue.",
-                            "scroll of enchant armor" => "Your armor glows silver.",
-                            "scroll of identify" => "You can identify this item.",
-                            "scroll of teleport" => "You suddenly find yourself somewhere else.",
-                            "scroll of sleep" => "You fall asleep.",
-                            "scroll of scare monster" => "The monsters flee.",
-                            "scroll of remove curse" => {
-                                "You feel as if someone is watching over you."
-                            }
-                            "scroll of create monster" => "You hear a faint cry in the distance.",
-                            "scroll of aggravate monster" => {
-                                "You hear a high pitched humming noise."
-                            }
-                            "scroll of magic mapping" => {
-                                "You feel a sense of the dungeon around you."
-                            }
-                            _ => "You read the scroll.",
-                        };
-                        self.state.last_system_message = Some(msg.to_string());
-                        vec![InventoryEvent::Used {
-                            name: entry.item.name,
-                        }]
-                    },
-                )
-            }
-            Command::Eat => {
-                remove_first_item_by_category(&mut self.state.inventory, ItemCategory::Food).map(
-                    |entry| {
-                        self.state.food_remaining = INIT_FOOD;
-                        self.state.is_hungry = false;
-                        self.state.is_weak = false;
-                        self.state.last_system_message =
-                            Some("Yum, that tasted good.".to_string());
-                        vec![InventoryEvent::Used {
-                            name: entry.item.name,
-                        }]
-                    },
-                )
-            }
-            Command::Zap => remove_first_item_by_category(
-                &mut self.state.inventory,
-                ItemCategory::Wand,
-            )
-            .map(|entry| {
-                let direction = self.state.pending_direction.unwrap_or(Direction::Right);
-                if let Some(target) = self.first_monster_in_direction(direction) {
-                    if let Some(event) = attack_monster(&mut self.state.monsters, target, 2) {
-                        if matches!(event, CombatEvent::PlayerHitMonster { killed: true, .. }) {
-                            self.state.monsters_defeated += 1;
-                        }
-                        self.state.last_turn_events.push(event);
-                        self.state.last_system_message = Some("Magic missile hits.".to_string());
-                    }
-                } else {
-                    self.state.last_system_message =
-                        Some("The wand fizzles into empty air.".to_string());
-                }
-                vec![InventoryEvent::Used {
-                    name: entry.item.name,
-                }]
-            }),
-            Command::Throw => remove_first_item_by_category(
-                &mut self.state.inventory,
-                ItemCategory::Weapon,
-            )
-            .map(|entry| {
-                let direction = self.state.pending_direction.unwrap_or(Direction::Right);
-                let (drow, dcol) = Self::direction_delta(direction);
-                let target = Position::new(
-                    self.state.player_position.row + drow,
-                    self.state.player_position.col + dcol,
-                );
-
-                if let Some(event) = attack_monster(&mut self.state.monsters, target, 1) {
-                    if matches!(event, CombatEvent::PlayerHitMonster { killed: true, .. }) {
-                        self.state.monsters_defeated += 1;
-                    }
-                    self.state.last_turn_events.push(event);
-                    self.state.last_system_message = Some("You throw and hit.".to_string());
-                } else if self.current_level.grid.is_walkable(target.row, target.col) {
-                    self.state.floor_items.push(FloorItem {
-                        item: entry.item.clone(),
-                        position: target,
-                    });
-                    self.state.last_system_message = Some("You throw your weapon.".to_string());
-                }
-
-                vec![InventoryEvent::Thrown {
-                    name: entry.item.name,
-                }]
-            }),
             Command::IdentifyTrap => {
                 let found = self
                     .state
@@ -492,8 +427,7 @@ impl GameLoop {
                     if !self.state.known_traps.contains(&position) {
                         self.state.known_traps.push(position);
                     }
-                    self.state.last_system_message =
-                        Some(format!("You found a {trap_name}."));
+                    self.state.last_system_message = Some(format!("You found a {trap_name}."));
                     Some(Vec::new())
                 } else {
                     self.state.last_system_message = Some("No trap nearby.".to_string());
@@ -501,6 +435,254 @@ impl GameLoop {
                 }
             }
             _ => None,
+        };
+
+        if let Some(events) = events {
+            self.state.last_inventory_events.extend(events);
+            PlayerAction::InventoryChanged
+        } else {
+            PlayerAction::Blocked
+        }
+    }
+
+    /// Start an item-selection action.  If the pack has at least one eligible
+    /// item, set `pending_item_action` and show the prompt; otherwise show the
+    /// "nothing to …" message and return Blocked.
+    fn start_item_action(&mut self, action: PendingItemAction) -> PlayerAction {
+        let has_item = self.state.inventory.iter().any(|e| {
+            let cat_ok = action
+                .filter_category()
+                .map_or(true, |cat| e.item.category == cat);
+            let eq_ok = if action.equipped_only() {
+                e.equipped_slot.is_some()
+            } else {
+                true
+            };
+            cat_ok && eq_ok
+        });
+
+        if has_item {
+            self.state.pending_item_action = Some(action);
+            self.state.last_system_message = Some(action.prompt().to_string());
+            PlayerAction::Blocked // Don't advance turn; wait for SelectItem
+        } else {
+            self.state.last_system_message = Some(action.empty_message().to_string());
+            PlayerAction::Blocked
+        }
+    }
+
+    /// Execute the pending item action for the item with pack-letter `ch`.
+    fn execute_item_selection(&mut self, action: PendingItemAction, ch: char) -> PlayerAction {
+        let events: Option<Vec<InventoryEvent>> = match action {
+            PendingItemAction::Drop => drop_by_ichar(
+                &mut self.state.inventory,
+                &mut self.state.floor_items,
+                ch,
+                self.state.player_position,
+            ),
+            PendingItemAction::Wield => {
+                let valid = self.state.inventory.iter().any(|e| {
+                    e.ichar == ch
+                        && e.item.category == ItemCategory::Weapon
+                        && e.equipped_slot.is_none()
+                });
+                if valid {
+                    equip_by_ichar(&mut self.state.inventory, ch)
+                } else {
+                    self.state.last_system_message = Some("no such item.".to_string());
+                    None
+                }
+            }
+            PendingItemAction::WearArmor => {
+                let valid = self.state.inventory.iter().any(|e| {
+                    e.ichar == ch
+                        && e.item.category == ItemCategory::Armor
+                        && e.equipped_slot.is_none()
+                });
+                if valid {
+                    equip_by_ichar(&mut self.state.inventory, ch)
+                } else {
+                    self.state.last_system_message = Some("no such item.".to_string());
+                    None
+                }
+            }
+            PendingItemAction::TakeOffArmor => {
+                let valid = self.state.inventory.iter().any(|e| {
+                    e.ichar == ch
+                        && e.item.category == ItemCategory::Armor
+                        && e.equipped_slot.is_some()
+                });
+                if valid {
+                    unequip_by_ichar(&mut self.state.inventory, ch).map(|ev| vec![ev])
+                } else {
+                    self.state.last_system_message = Some("no such item.".to_string());
+                    None
+                }
+            }
+            PendingItemAction::PutOnRing => {
+                let valid = self.state.inventory.iter().any(|e| {
+                    e.ichar == ch
+                        && e.item.category == ItemCategory::Ring
+                        && e.equipped_slot.is_none()
+                });
+                if valid {
+                    equip_by_ichar(&mut self.state.inventory, ch)
+                } else {
+                    self.state.last_system_message = Some("no such item.".to_string());
+                    None
+                }
+            }
+            PendingItemAction::RemoveRing => {
+                let valid = self.state.inventory.iter().any(|e| {
+                    e.ichar == ch
+                        && e.item.category == ItemCategory::Ring
+                        && e.equipped_slot.is_some()
+                });
+                if valid {
+                    unequip_by_ichar(&mut self.state.inventory, ch).map(|ev| vec![ev])
+                } else {
+                    self.state.last_system_message = Some("no such item.".to_string());
+                    None
+                }
+            }
+            PendingItemAction::Quaff => {
+                let entry = self.state.inventory.iter().find(|e| {
+                    e.ichar == ch && e.item.category == ItemCategory::Potion
+                });
+                if entry.is_none() {
+                    self.state.last_system_message = Some("no such item.".to_string());
+                    return PlayerAction::Blocked;
+                }
+                remove_item_by_ichar(&mut self.state.inventory, ch).map(|entry| {
+                    let msg = match entry.item.name {
+                        "healing potion" => {
+                            self.state.player_hit_points = (self.state.player_hit_points + 4)
+                                .min(self.state.player_max_hit_points);
+                            "You feel better."
+                        }
+                        "potion of extra healing" => {
+                            self.state.player_hit_points = (self.state.player_hit_points + 8)
+                                .min(self.state.player_max_hit_points);
+                            "You feel much better."
+                        }
+                        "potion of increase strength" => "You feel stronger.",
+                        "potion of restore strength" => "You feel your strength return.",
+                        "potion of poison" => "You feel very sick.",
+                        "potion of raise level" => "You feel more experienced.",
+                        "potion of blindness" => "A cloud of darkness surrounds you.",
+                        "potion of hallucination" => "Oh wow, everything seems so cosmic!",
+                        "potion of detect monster" => "You sense the presence of monsters.",
+                        "potion of detect objects" => "You sense the presence of objects.",
+                        "potion of confusion" => "You feel confused.",
+                        "potion of levitation" => "You start to float in the air.",
+                        "potion of haste self" => "You feel yourself moving faster.",
+                        "potion of see invisible" => "Your vision becomes clear.",
+                        _ => "You drink the potion.",
+                    };
+                    self.state.last_system_message = Some(msg.to_string());
+                    vec![InventoryEvent::Used { name: entry.item.name }]
+                })
+            }
+            PendingItemAction::ReadScroll => {
+                let entry = self.state.inventory.iter().find(|e| {
+                    e.ichar == ch && e.item.category == ItemCategory::Scroll
+                });
+                if entry.is_none() {
+                    self.state.last_system_message = Some("no such item.".to_string());
+                    return PlayerAction::Blocked;
+                }
+                remove_item_by_ichar(&mut self.state.inventory, ch).map(|entry| {
+                    let msg = match entry.item.name {
+                        "scroll of protect armor" => "Your armor glows faintly.",
+                        "scroll of hold monster" => "The monsters are frozen.",
+                        "scroll of enchant weapon" => "Your weapon glows blue.",
+                        "scroll of enchant armor" => "Your armor glows silver.",
+                        "scroll of identify" => "You can identify this item.",
+                        "scroll of teleport" => "You suddenly find yourself somewhere else.",
+                        "scroll of sleep" => "You fall asleep.",
+                        "scroll of scare monster" => "The monsters flee.",
+                        "scroll of remove curse" => "You feel as if someone is watching over you.",
+                        "scroll of create monster" => "You hear a faint cry in the distance.",
+                        "scroll of aggravate monster" => "You hear a high pitched humming noise.",
+                        "scroll of magic mapping" => "You feel a sense of the dungeon around you.",
+                        _ => "You read the scroll.",
+                    };
+                    self.state.last_system_message = Some(msg.to_string());
+                    vec![InventoryEvent::Used { name: entry.item.name }]
+                })
+            }
+            PendingItemAction::Eat => {
+                let entry = self.state.inventory.iter().find(|e| {
+                    e.ichar == ch && e.item.category == ItemCategory::Food
+                });
+                if entry.is_none() {
+                    self.state.last_system_message = Some("no such item.".to_string());
+                    return PlayerAction::Blocked;
+                }
+                remove_item_by_ichar(&mut self.state.inventory, ch).map(|entry| {
+                    self.state.food_remaining = INIT_FOOD;
+                    self.state.is_hungry = false;
+                    self.state.is_weak = false;
+                    self.state.last_system_message = Some("Yum, that tasted good.".to_string());
+                    vec![InventoryEvent::Used { name: entry.item.name }]
+                })
+            }
+            PendingItemAction::Zap => {
+                let entry = self.state.inventory.iter().find(|e| {
+                    e.ichar == ch && e.item.category == ItemCategory::Wand
+                });
+                if entry.is_none() {
+                    self.state.last_system_message = Some("no such item.".to_string());
+                    return PlayerAction::Blocked;
+                }
+                remove_item_by_ichar(&mut self.state.inventory, ch).map(|entry| {
+                    let direction = self.state.pending_direction.unwrap_or(Direction::Right);
+                    if let Some(target) = self.first_monster_in_direction(direction) {
+                        if let Some(event) = attack_monster(&mut self.state.monsters, target, 2) {
+                            if matches!(event, CombatEvent::PlayerHitMonster { killed: true, .. }) {
+                                self.state.monsters_defeated += 1;
+                            }
+                            self.state.last_turn_events.push(event);
+                            self.state.last_system_message = Some("Magic missile hits.".to_string());
+                        }
+                    } else {
+                        self.state.last_system_message =
+                            Some("The wand fizzles into empty air.".to_string());
+                    }
+                    vec![InventoryEvent::Used { name: entry.item.name }]
+                })
+            }
+            PendingItemAction::Throw => {
+                let entry = self.state.inventory.iter().find(|e| {
+                    e.ichar == ch && e.item.category == ItemCategory::Weapon
+                });
+                if entry.is_none() {
+                    self.state.last_system_message = Some("no such item.".to_string());
+                    return PlayerAction::Blocked;
+                }
+                remove_item_by_ichar(&mut self.state.inventory, ch).map(|entry| {
+                    let direction = self.state.pending_direction.unwrap_or(Direction::Right);
+                    let (drow, dcol) = Self::direction_delta(direction);
+                    let target = Position::new(
+                        self.state.player_position.row + drow,
+                        self.state.player_position.col + dcol,
+                    );
+                    if let Some(event) = attack_monster(&mut self.state.monsters, target, 1) {
+                        if matches!(event, CombatEvent::PlayerHitMonster { killed: true, .. }) {
+                            self.state.monsters_defeated += 1;
+                        }
+                        self.state.last_turn_events.push(event);
+                        self.state.last_system_message = Some("You throw and hit.".to_string());
+                    } else if self.current_level.grid.is_walkable(target.row, target.col) {
+                        self.state.floor_items.push(FloorItem {
+                            item: entry.item.clone(),
+                            position: target,
+                        });
+                        self.state.last_system_message = Some("You throw your weapon.".to_string());
+                    }
+                    vec![InventoryEvent::Thrown { name: entry.item.name }]
+                })
+            }
         };
 
         if let Some(events) = events {
@@ -795,25 +977,71 @@ impl GameLoop {
                     PlayerAction::InventoryChanged | PlayerAction::Blocked => StepOutcome::Continue,
                 }
             }
-            Command::PickUp
-            | Command::Drop
-            | Command::Wield
-            | Command::WearArmor
-            | Command::TakeOffArmor
-            | Command::PutOnRing
-            | Command::RemoveRing
-            | Command::Quaff
-            | Command::Zap
-            | Command::Throw
-            | Command::ReadScroll
-            | Command::Eat
-            | Command::IdentifyTrap => match self.try_inventory_action(command) {
-                PlayerAction::InventoryChanged => self.advance_world_turn(),
-                PlayerAction::Blocked
-                | PlayerAction::Held
-                | PlayerAction::Moved
-                | PlayerAction::Attacked => StepOutcome::Continue,
-            },
+            Command::PickUp | Command::IdentifyTrap => {
+                match self.try_immediate_inventory_action(command) {
+                    PlayerAction::InventoryChanged => self.advance_world_turn(),
+                    _ => StepOutcome::Continue,
+                }
+            }
+            Command::Drop => {
+                self.start_item_action(PendingItemAction::Drop);
+                StepOutcome::Continue
+            }
+            Command::Wield => {
+                self.start_item_action(PendingItemAction::Wield);
+                StepOutcome::Continue
+            }
+            Command::WearArmor => {
+                self.start_item_action(PendingItemAction::WearArmor);
+                StepOutcome::Continue
+            }
+            Command::TakeOffArmor => {
+                self.start_item_action(PendingItemAction::TakeOffArmor);
+                StepOutcome::Continue
+            }
+            Command::PutOnRing => {
+                self.start_item_action(PendingItemAction::PutOnRing);
+                StepOutcome::Continue
+            }
+            Command::RemoveRing => {
+                self.start_item_action(PendingItemAction::RemoveRing);
+                StepOutcome::Continue
+            }
+            Command::Quaff => {
+                self.start_item_action(PendingItemAction::Quaff);
+                StepOutcome::Continue
+            }
+            Command::ReadScroll => {
+                self.start_item_action(PendingItemAction::ReadScroll);
+                StepOutcome::Continue
+            }
+            Command::Eat => {
+                self.start_item_action(PendingItemAction::Eat);
+                StepOutcome::Continue
+            }
+            Command::Zap => {
+                self.start_item_action(PendingItemAction::Zap);
+                StepOutcome::Continue
+            }
+            Command::Throw => {
+                self.start_item_action(PendingItemAction::Throw);
+                StepOutcome::Continue
+            }
+            Command::SelectItem(ch) => {
+                if let Some(action) = self.state.pending_item_action.take() {
+                    match self.execute_item_selection(action, ch) {
+                        PlayerAction::InventoryChanged => self.advance_world_turn(),
+                        _ => StepOutcome::Continue,
+                    }
+                } else {
+                    StepOutcome::Continue
+                }
+            }
+            Command::CancelItemSelect => {
+                self.state.pending_item_action = None;
+                self.state.last_system_message = None;
+                StepOutcome::Continue
+            }
             Command::Descend => {
                 self.state.pending_direction = None;
                 self.state.last_move_blocked = false;
@@ -993,9 +1221,13 @@ mod tests {
                 id: 1,
                 item: InventoryItem::healing_potion(),
                 equipped_slot: None,
+                ichar: 'a',
             });
 
+        // First Quaff sets pending action; SelectItem('a') executes it.
         assert_eq!(game.step(Command::Quaff), StepOutcome::Continue);
+        assert!(game.state.pending_item_action.is_some());
+        assert_eq!(game.step(Command::SelectItem('a')), StepOutcome::Continue);
         assert_eq!(game.state.player_hit_points, 11);
         assert!(game.state.inventory.is_empty());
     }
@@ -1073,7 +1305,11 @@ mod tests {
         assert!(game.state().floor_items.is_empty());
         assert_eq!(game.state().last_inventory_events.len(), 1);
 
+        // Wield: first call sets pending, SelectItem executes.
         assert_eq!(game.step(Command::Wield), StepOutcome::Continue);
+        assert!(game.state().pending_item_action.is_some());
+        let item_ichar = game.state().inventory[0].ichar;
+        assert_eq!(game.step(Command::SelectItem(item_ichar)), StepOutcome::Continue);
         assert_eq!(game.state().turns, 2);
         assert_eq!(
             game.state().inventory[0].equipped_slot,
@@ -1081,7 +1317,10 @@ mod tests {
         );
 
         let drop_position = game.state.player_position;
+        // Drop: first call sets pending, SelectItem executes.
         assert_eq!(game.step(Command::Drop), StepOutcome::Continue);
+        assert!(game.state().pending_item_action.is_some());
+        assert_eq!(game.step(Command::SelectItem(item_ichar)), StepOutcome::Continue);
         assert_eq!(game.state().turns, 3);
         assert!(game.state().inventory.is_empty());
         assert_eq!(game.state().floor_items[0].position, drop_position);
@@ -1096,6 +1335,7 @@ mod tests {
                 id: 1,
                 item: InventoryItem::dagger(),
                 equipped_slot: Some(EquipmentSlot::Weapon),
+                ichar: 'a',
             });
         game.state
             .inventory
@@ -1103,6 +1343,7 @@ mod tests {
                 id: 2,
                 item: InventoryItem::leather_armor(),
                 equipped_slot: Some(EquipmentSlot::Armor),
+                ichar: 'b',
             });
 
         game.state.monsters[0].position = Position::new(6, 10);
@@ -1127,6 +1368,7 @@ mod tests {
                 id: 1,
                 item: InventoryItem::leather_armor(),
                 equipped_slot: None,
+                ichar: 'a',
             });
         game.state
             .inventory
@@ -1134,24 +1376,33 @@ mod tests {
                 id: 2,
                 item: InventoryItem::protection_ring(),
                 equipped_slot: None,
+                ichar: 'b',
             });
 
         assert_eq!(game.step(Command::WearArmor), StepOutcome::Continue);
+        assert!(game.state().pending_item_action.is_some());
+        assert_eq!(game.step(Command::SelectItem('a')), StepOutcome::Continue);
         assert_eq!(
             game.state().inventory[0].equipped_slot,
             Some(EquipmentSlot::Armor)
         );
 
         assert_eq!(game.step(Command::PutOnRing), StepOutcome::Continue);
+        assert!(game.state().pending_item_action.is_some());
+        assert_eq!(game.step(Command::SelectItem('b')), StepOutcome::Continue);
         assert_eq!(
             game.state().inventory[1].equipped_slot,
             Some(EquipmentSlot::LeftRing)
         );
 
         assert_eq!(game.step(Command::RemoveRing), StepOutcome::Continue);
+        assert!(game.state().pending_item_action.is_some());
+        assert_eq!(game.step(Command::SelectItem('b')), StepOutcome::Continue);
         assert_eq!(game.state().inventory[1].equipped_slot, None);
 
         assert_eq!(game.step(Command::TakeOffArmor), StepOutcome::Continue);
+        assert!(game.state().pending_item_action.is_some());
+        assert_eq!(game.step(Command::SelectItem('a')), StepOutcome::Continue);
         assert_eq!(game.state().inventory[0].equipped_slot, None);
     }
 

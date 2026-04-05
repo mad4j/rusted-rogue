@@ -423,6 +423,15 @@ pub struct InventoryEntry {
     pub id: u64,
     pub item: InventoryItem,
     pub equipped_slot: Option<EquipmentSlot>,
+    /// Pack letter assigned on pick-up, mirroring the original `ichar` field.
+    pub ichar: char,
+}
+
+/// Returns the next available pack letter ('a'–'z') not already used by an
+/// inventory entry.  Falls back to 'a' if all slots are taken (pack full).
+pub fn next_avail_ichar(inventory: &[InventoryEntry]) -> char {
+    let used: std::collections::HashSet<char> = inventory.iter().map(|e| e.ichar).collect();
+    ('a'..='z').find(|c| !used.contains(c)).unwrap_or('a')
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -459,6 +468,99 @@ pub enum InventoryEvent {
 
 pub fn apply_item_effects() {}
 
+// ── Per-ichar action helpers ────────────────────────────────────────────────
+
+/// Remove the item identified by `ch` from the inventory and return it.
+pub fn remove_item_by_ichar(
+    inventory: &mut Vec<InventoryEntry>,
+    ch: char,
+) -> Option<InventoryEntry> {
+    let index = inventory.iter().position(|e| e.ichar == ch)?;
+    Some(inventory.remove(index))
+}
+
+/// Equip the item identified by `ch` (weapon, armor, or ring).  Handles slot
+/// conflict the same way as `equip_first_matching`.
+pub fn equip_by_ichar(
+    inventory: &mut Vec<InventoryEntry>,
+    ch: char,
+) -> Option<Vec<InventoryEvent>> {
+    use ItemCategory::{Armor, Ring, Weapon};
+    let index = inventory
+        .iter()
+        .position(|e| e.ichar == ch && e.equipped_slot.is_none())?;
+    let preferred: &[EquipmentSlot] = match inventory[index].item.category {
+        Weapon => &[EquipmentSlot::Weapon],
+        Armor => &[EquipmentSlot::Armor],
+        Ring => &[EquipmentSlot::LeftRing, EquipmentSlot::RightRing],
+        _ => return None,
+    };
+    let slot = preferred
+        .iter()
+        .copied()
+        .find(|s| inventory.iter().all(|e| e.equipped_slot != Some(*s)))
+        .unwrap_or(preferred[0]);
+    let mut events = Vec::new();
+    if let Some(existing) = inventory.iter_mut().find(|e| e.equipped_slot == Some(slot)) {
+        existing.equipped_slot = None;
+        events.push(InventoryEvent::Unequipped {
+            name: existing.item.name,
+            slot,
+        });
+    }
+    inventory[index].equipped_slot = Some(slot);
+    events.push(InventoryEvent::Equipped {
+        name: inventory[index].item.name,
+        slot,
+    });
+    Some(events)
+}
+
+/// Unequip (take off) the equipped item identified by `ch`.
+pub fn unequip_by_ichar(
+    inventory: &mut [InventoryEntry],
+    ch: char,
+) -> Option<InventoryEvent> {
+    let entry = inventory
+        .iter_mut()
+        .find(|e| e.ichar == ch && e.equipped_slot.is_some())?;
+    let slot = entry.equipped_slot.take().unwrap();
+    Some(InventoryEvent::Unequipped {
+        name: entry.item.name,
+        slot,
+    })
+}
+
+/// Drop the item identified by `ch` at `position`.
+pub fn drop_by_ichar(
+    inventory: &mut Vec<InventoryEntry>,
+    floor_items: &mut Vec<FloorItem>,
+    ch: char,
+    position: Position,
+) -> Option<Vec<InventoryEvent>> {
+    if floor_items.iter().any(|fi| fi.position == position) {
+        return None;
+    }
+    let index = inventory.iter().position(|e| e.ichar == ch)?;
+    let mut entry = inventory.remove(index);
+    let mut events = Vec::new();
+    if let Some(slot) = entry.equipped_slot.take() {
+        events.push(InventoryEvent::Unequipped {
+            name: entry.item.name,
+            slot,
+        });
+    }
+    floor_items.push(FloorItem {
+        item: entry.item.clone(),
+        position,
+    });
+    events.push(InventoryEvent::Dropped {
+        name: entry.item.name,
+        position,
+    });
+    Some(events)
+}
+
 pub fn pick_up_item(
     inventory: &mut Vec<InventoryEntry>,
     floor_items: &mut Vec<FloorItem>,
@@ -474,75 +576,18 @@ pub fn pick_up_item(
         .position(|floor_item| floor_item.position == position)?;
     let floor_item = floor_items.remove(index);
 
+    let ichar = next_avail_ichar(inventory);
     inventory.push(InventoryEntry {
         id: *next_item_id,
         item: floor_item.item.clone(),
         equipped_slot: None,
+        ichar,
     });
     *next_item_id += 1;
 
     Some(InventoryEvent::PickedUp {
         name: floor_item.item.name,
     })
-}
-
-pub fn drop_first_item(
-    inventory: &mut Vec<InventoryEntry>,
-    floor_items: &mut Vec<FloorItem>,
-    position: Position,
-) -> Option<Vec<InventoryEvent>> {
-    if floor_items
-        .iter()
-        .any(|floor_item| floor_item.position == position)
-    {
-        return None;
-    }
-
-    let mut entry = inventory.pop()?;
-    let mut events = Vec::new();
-
-    if let Some(slot) = entry.equipped_slot.take() {
-        events.push(InventoryEvent::Unequipped {
-            name: entry.item.name,
-            slot,
-        });
-    }
-
-    floor_items.push(FloorItem {
-        item: entry.item.clone(),
-        position,
-    });
-    events.push(InventoryEvent::Dropped {
-        name: entry.item.name,
-        position,
-    });
-
-    Some(events)
-}
-
-pub fn equip_first_weapon(inventory: &mut [InventoryEntry]) -> Option<Vec<InventoryEvent>> {
-    equip_first_matching(inventory, ItemCategory::Weapon, &[EquipmentSlot::Weapon])
-}
-
-pub fn equip_first_armor(inventory: &mut [InventoryEntry]) -> Option<Vec<InventoryEvent>> {
-    equip_first_matching(inventory, ItemCategory::Armor, &[EquipmentSlot::Armor])
-}
-
-pub fn put_on_first_ring(inventory: &mut [InventoryEntry]) -> Option<Vec<InventoryEvent>> {
-    equip_first_matching(
-        inventory,
-        ItemCategory::Ring,
-        &[EquipmentSlot::LeftRing, EquipmentSlot::RightRing],
-    )
-}
-
-pub fn unequip_armor(inventory: &mut [InventoryEntry]) -> Option<InventoryEvent> {
-    unequip_slot(inventory, EquipmentSlot::Armor)
-}
-
-pub fn remove_ring(inventory: &mut [InventoryEntry]) -> Option<InventoryEvent> {
-    unequip_slot(inventory, EquipmentSlot::RightRing)
-        .or_else(|| unequip_slot(inventory, EquipmentSlot::LeftRing))
 }
 
 pub fn total_attack_bonus(inventory: &[InventoryEntry]) -> i16 {
@@ -561,73 +606,11 @@ pub fn total_armor_bonus(inventory: &[InventoryEntry]) -> i16 {
         .sum()
 }
 
-pub fn remove_first_item_by_category(
-    inventory: &mut Vec<InventoryEntry>,
-    category: ItemCategory,
-) -> Option<InventoryEntry> {
-    let index = inventory
-        .iter()
-        .position(|entry| entry.item.category == category)?;
-    Some(inventory.remove(index))
-}
-
-fn equip_first_matching(
-    inventory: &mut [InventoryEntry],
-    category: ItemCategory,
-    preferred_slots: &[EquipmentSlot],
-) -> Option<Vec<InventoryEvent>> {
-    let target_index = inventory
-        .iter()
-        .position(|entry| entry.item.category == category && entry.equipped_slot.is_none())?;
-
-    let slot = preferred_slots
-        .iter()
-        .copied()
-        .find(|candidate| {
-            inventory
-                .iter()
-                .all(|entry| entry.equipped_slot != Some(*candidate))
-        })
-        .unwrap_or(preferred_slots[0]);
-
-    let mut events = Vec::new();
-    if let Some(existing) = inventory
-        .iter_mut()
-        .find(|entry| entry.equipped_slot == Some(slot))
-    {
-        existing.equipped_slot = None;
-        events.push(InventoryEvent::Unequipped {
-            name: existing.item.name,
-            slot,
-        });
-    }
-
-    inventory[target_index].equipped_slot = Some(slot);
-    events.push(InventoryEvent::Equipped {
-        name: inventory[target_index].item.name,
-        slot,
-    });
-
-    Some(events)
-}
-
-fn unequip_slot(inventory: &mut [InventoryEntry], slot: EquipmentSlot) -> Option<InventoryEvent> {
-    let entry = inventory
-        .iter_mut()
-        .find(|entry| entry.equipped_slot == Some(slot))?;
-    entry.equipped_slot = None;
-    Some(InventoryEvent::Unequipped {
-        name: entry.item.name,
-        slot,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        drop_first_item, equip_first_armor, equip_first_weapon, pick_up_item, put_on_first_ring,
-        remove_first_item_by_category, remove_ring, total_armor_bonus, total_attack_bonus,
-        EquipmentSlot, FloorItem, InventoryEntry, InventoryEvent, InventoryItem, ItemCategory,
+        drop_by_ichar, equip_by_ichar, pick_up_item, total_armor_bonus, total_attack_bonus,
+        unequip_by_ichar, EquipmentSlot, FloorItem, InventoryEntry, InventoryEvent, InventoryItem,
     };
     use crate::core_types::Position;
 
@@ -659,22 +642,25 @@ mod tests {
                 id: 1,
                 item: InventoryItem::dagger(),
                 equipped_slot: None,
+                ichar: 'a',
             },
             InventoryEntry {
                 id: 2,
                 item: InventoryItem::leather_armor(),
                 equipped_slot: None,
+                ichar: 'b',
             },
             InventoryEntry {
                 id: 3,
                 item: InventoryItem::accuracy_ring(),
                 equipped_slot: None,
+                ichar: 'c',
             },
         ];
 
-        assert!(equip_first_weapon(&mut inventory).is_some());
-        assert!(equip_first_armor(&mut inventory).is_some());
-        assert!(put_on_first_ring(&mut inventory).is_some());
+        assert!(equip_by_ichar(&mut inventory, 'a').is_some());
+        assert!(equip_by_ichar(&mut inventory, 'b').is_some());
+        assert!(equip_by_ichar(&mut inventory, 'c').is_some());
 
         assert_eq!(total_attack_bonus(&inventory), 2);
         assert_eq!(total_armor_bonus(&inventory), 1);
@@ -688,10 +674,11 @@ mod tests {
             id: 1,
             item: InventoryItem::dagger(),
             equipped_slot: Some(EquipmentSlot::Weapon),
+            ichar: 'a',
         }];
         let mut floor_items = Vec::new();
 
-        let events = drop_first_item(&mut inventory, &mut floor_items, Position::new(5, 5));
+        let events = drop_by_ichar(&mut inventory, &mut floor_items, 'a', Position::new(5, 5));
 
         assert_eq!(
             events,
@@ -711,21 +698,23 @@ mod tests {
     }
 
     #[test]
-    fn remove_ring_prefers_right_hand() {
+    fn unequip_by_ichar_removes_ring() {
         let mut inventory = vec![
             InventoryEntry {
                 id: 1,
                 item: InventoryItem::protection_ring(),
                 equipped_slot: Some(EquipmentSlot::LeftRing),
+                ichar: 'a',
             },
             InventoryEntry {
                 id: 2,
                 item: InventoryItem::accuracy_ring(),
                 equipped_slot: Some(EquipmentSlot::RightRing),
+                ichar: 'b',
             },
         ];
 
-        let event = remove_ring(&mut inventory);
+        let event = unequip_by_ichar(&mut inventory, 'b');
 
         assert_eq!(
             event,
@@ -735,26 +724,5 @@ mod tests {
             })
         );
     }
-
-    #[test]
-    fn remove_first_item_by_category_finds_consumables() {
-        let mut inventory = vec![
-            InventoryEntry {
-                id: 1,
-                item: InventoryItem::dagger(),
-                equipped_slot: None,
-            },
-            InventoryEntry {
-                id: 2,
-                item: InventoryItem::healing_potion(),
-                equipped_slot: None,
-            },
-        ];
-
-        let removed = remove_first_item_by_category(&mut inventory, ItemCategory::Potion)
-            .expect("potion should be removable");
-
-        assert_eq!(removed.item.name, "healing potion");
-        assert_eq!(inventory.len(), 1);
-    }
 }
+

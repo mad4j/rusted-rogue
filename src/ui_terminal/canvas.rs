@@ -11,6 +11,7 @@ pub(super) struct GameCanvas<'a> {
     pub(super) game: &'a GameLoop,
     pub(super) show_help: bool,
     pub(super) help_page: usize,
+    pub(super) show_inventory: bool,
 }
 
 impl<'a> canvas::Program<Message> for GameCanvas<'a> {
@@ -34,7 +35,7 @@ impl<'a> canvas::Program<Message> for GameCanvas<'a> {
         if self.show_help {
             render_help_page(&mut frame, self.help_page);
         } else {
-            render_game(&mut frame, self.game);
+            render_game(&mut frame, self.game, self.show_inventory);
         }
 
         vec![frame.into_geometry()]

@@ -60,7 +60,7 @@ pub(super) fn cell_color(ch: char) -> Color {
 // Game screen rendering
 // ---------------------------------------------------------------------------
 
-pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop) {
+pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inventory: bool) {
     let lookups = RenderLookups::from_game(game);
 
     for row in 0..DROWS {
@@ -80,6 +80,109 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop) {
         0,
         DROWS + 1,
         Color::from_rgb(1.0, 0.78, 0.59),
+    ));
+
+    // Overlay the inventory panel when 'i' is pressed or an item action is pending.
+    let show_overlay = show_inventory || game.state().pending_item_action.is_some();
+    if show_overlay {
+        render_inventory_overlay(frame, game, show_inventory);
+    }
+}
+
+/// Draw the inventory list (or item-selection prompt) overlaid on the right side of the screen.
+fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop, browsing: bool) {
+    use crate::inventory_items::EquipmentSlot;
+
+    // Panel starts at column 42, leaving the dungeon visible on the left.
+    const PANEL_COL: usize = 42;
+    const PANEL_WIDTH: usize = 36; // characters
+
+    let state = game.state();
+    let pending = &state.pending_item_action;
+
+    // Dark background rectangle.
+    let bg_x = PANEL_COL as f32 * super::CELL_W;
+    let bg_y = 0.0_f32;
+    let bg_w = PANEL_WIDTH as f32 * super::CELL_W;
+    let bg_h = (DROWS + 2) as f32 * super::CELL_H;
+    frame.fill_rectangle(
+        Point::new(bg_x, bg_y),
+        iced::Size::new(bg_w, bg_h),
+        Color::from_rgba(0.04, 0.04, 0.14, 0.95),
+    );
+
+    // Header line.
+    let header = "  INVENTORY";
+    frame.fill_text(cell_text(header, PANEL_COL, 0, Color::from_rgb(1.0, 1.0, 0.4)));
+
+    // Determine which items to list.
+    let filter_cat = pending.as_ref().and_then(|a| a.filter_category());
+    let equipped_only = pending.as_ref().map(|a| a.equipped_only()).unwrap_or(false);
+
+    let items: Vec<&crate::inventory_items::InventoryEntry> = state
+        .inventory
+        .iter()
+        .filter(|e| {
+            if let Some(cat) = filter_cat {
+                if e.item.category != cat {
+                    return false;
+                }
+            }
+            if equipped_only && e.equipped_slot.is_none() {
+                return false;
+            }
+            true
+        })
+        .collect();
+
+    if items.is_empty() {
+        let msg = if let Some(action) = pending {
+            action.empty_message()
+        } else {
+            "your pack is empty"
+        };
+        frame.fill_text(cell_text(
+            format!("  {}", msg),
+            PANEL_COL,
+            2,
+            Color::from_rgb(0.7, 0.7, 0.7),
+        ));
+    } else {
+        for (idx, entry) in items.iter().enumerate() {
+            let slot_label = match entry.equipped_slot {
+                Some(EquipmentSlot::Weapon) => " (weapon in hand)",
+                Some(EquipmentSlot::Armor) => " (being worn)",
+                Some(EquipmentSlot::LeftRing) => " (on left finger)",
+                Some(EquipmentSlot::RightRing) => " (on right finger)",
+                None => "",
+            };
+            let name = &entry.item.name;
+            let line = format!(" {}) {}{}", entry.ichar, name, slot_label);
+            // Truncate to panel width.
+            let line: String = line.chars().take(PANEL_WIDTH - 1).collect();
+            frame.fill_text(cell_text(
+                line,
+                PANEL_COL,
+                2 + idx,
+                Color::from_rgb(0.85, 0.85, 0.85),
+            ));
+        }
+    }
+
+    // Footer.
+    let footer = if browsing {
+        "--press any key to continue--".to_string()
+    } else if let Some(action) = pending {
+        action.prompt().to_string()
+    } else {
+        String::new()
+    };
+    let footer_row = DROWS;
+    frame.fill_text(cell_text(
+        footer,
+        PANEL_COL,
+        footer_row,
+        Color::from_rgb(0.0, 1.0, 1.0),
     ));
 }
 
