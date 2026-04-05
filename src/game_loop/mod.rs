@@ -4,7 +4,7 @@ use crate::actors::{
     attack_monster, spawn_basic_monsters, tick_monsters, CombatEvent, Monster, MonsterKind,
     SpecialHit, StatusEffectEvent,
 };
-use crate::core_types::{EXP_LEVELS, INIT_FOOD, INIT_STRENGTH, Position, TrapKind};
+use crate::core_types::{EXP_LEVELS, FOOD_FAINT, FOOD_HUNGRY, FOOD_WEAK, INIT_FOOD, INIT_STRENGTH, Position, TrapKind};
 use crate::inventory_items::{
     apply_item_effects, drop_by_ichar, equip_by_ichar, pick_up_item, remove_item_by_ichar,
     total_armor_bonus, total_attack_bonus, unequip_by_ichar, EquipmentSlot, FloorItem,
@@ -653,10 +653,23 @@ impl GameLoop {
                     return PlayerAction::Blocked;
                 }
                 remove_item_by_ichar(&mut self.state.inventory, ch).map(|entry| {
-                    self.state.food_remaining = INIT_FOOD;
+                    let mut eat_rng = GameRng::new(self.state.turns as i32 ^ 0x5550);
+                    let is_yummy = eat_rng.get_rand(0, 99) < 60;
+                    let moves = if is_yummy {
+                        eat_rng.get_rand(900, 1100)
+                    } else {
+                        self.state.player_exp_points += 2;
+                        eat_rng.get_rand(700, 900)
+                    };
+                    let msg = if is_yummy {
+                        "Yum, that tasted good."
+                    } else {
+                        "Yuk, that food tasted awful."
+                    };
+                    self.state.food_remaining = self.state.food_remaining / 3 + moves;
                     self.state.is_hungry = false;
                     self.state.is_weak = false;
-                    self.state.last_system_message = Some("Yum, that tasted good.".to_string());
+                    self.state.last_system_message = Some(msg.to_string());
                     vec![InventoryEvent::Used { name: entry.item.name }]
                 })
             }
@@ -777,25 +790,70 @@ impl GameLoop {
 
     fn advance_world_turn(&mut self) -> StepOutcome {
         self.state.turns += 1;
+        let mut rng = GameRng::new(self.state.turns as i32);
 
-        // Hunger tick — reduce food every 2 turns
-        if self.state.turns % 2 == 0 {
-            self.state.food_remaining -= 1;
-            if self.state.food_remaining <= 0 {
-                self.state.player_hit_points = (self.state.player_hit_points - 1).max(0);
-                self.state.last_system_message = Some("You are starving!".to_string());
-                if self.state.player_hit_points == 0 {
-                    self.state.quit_requested = true;
-                }
-            } else if self.state.food_remaining <= 20 && !self.state.is_weak {
-                self.state.is_weak = true;
-                self.state.is_hungry = true;
-                self.state.last_system_message =
-                    Some("You feel weak with hunger.".to_string());
-            } else if self.state.food_remaining <= 150 && !self.state.is_hungry {
+        // Hunger tick — matching original reg_move() / check_hunger()
+        {
+            let is_slow_dig = self.state.inventory.iter().any(|e| {
+                matches!(
+                    e.equipped_slot,
+                    Some(EquipmentSlot::LeftRing) | Some(EquipmentSlot::RightRing)
+                ) && e.item.name == "ring of slow digestion"
+            });
+            let ring_count = self.state.inventory.iter()
+                .filter(|e| {
+                    matches!(
+                        e.equipped_slot,
+                        Some(EquipmentSlot::LeftRing) | Some(EquipmentSlot::RightRing)
+                    )
+                })
+                .count();
+            let decrement: i32 = if is_slow_dig {
+                if self.state.turns % 2 == 1 { 1 } else { 0 }
+            } else if ring_count >= 2 {
+                2
+            } else {
+                1
+            };
+            self.state.food_remaining -= decrement;
+
+            if self.state.food_remaining == FOOD_HUNGRY {
                 self.state.is_hungry = true;
                 self.state.last_system_message =
                     Some("You are starting to feel hungry.".to_string());
+            } else if self.state.food_remaining == FOOD_WEAK {
+                self.state.is_weak = true;
+                self.state.last_system_message =
+                    Some("You feel weak with hunger.".to_string());
+            } else if self.state.food_remaining == FOOD_FAINT {
+                self.state.last_system_message =
+                    Some("You are about to faint from hunger.".to_string());
+            } else if self.state.food_remaining < FOOD_FAINT && self.state.food_remaining > 0 {
+                if rng.get_rand(0, 99) < 40 {
+                    self.state.food_remaining =
+                        (self.state.food_remaining + 1).min(FOOD_FAINT);
+                }
+                let n = rng.get_rand(0, FOOD_FAINT - self.state.food_remaining);
+                if n > 0 {
+                    self.state.last_system_message =
+                        Some("You faint from hunger.".to_string());
+                    for _ in 0..n {
+                        if rng.get_rand(0, 1) == 1 {
+                            tick_monsters(
+                                &mut self.state.monsters,
+                                &self.current_level,
+                                self.state.player_position,
+                                &mut rng,
+                            );
+                        }
+                    }
+                }
+            } else if self.state.food_remaining <= 0 {
+                self.state.food_remaining = 0;
+                self.state.last_system_message =
+                    Some("You starve to death.".to_string());
+                self.state.player_hit_points = 0;
+                self.state.quit_requested = true;
             }
         }
 
@@ -805,7 +863,6 @@ impl GameLoop {
             return StepOutcome::Finished;
         }
 
-        let mut rng = GameRng::new(self.state.turns as i32);
         let events = tick_monsters(
             &mut self.state.monsters,
             &self.current_level,

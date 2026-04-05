@@ -11,7 +11,10 @@ pub const COL1: i16 = 20;
 pub const COL2: i16 = 40;
 
 pub const INIT_STRENGTH: i16 = 16;
-pub const INIT_FOOD: i32 = 300;
+pub const INIT_FOOD: i32 = 1250;
+pub const FOOD_HUNGRY: i32 = 300;
+pub const FOOD_WEAK: i32 = 150;
+pub const FOOD_FAINT: i32 = 20;
 
 pub const EXP_LEVELS: [i64; 21] = [
     10, 20, 40, 80, 160, 320, 640, 1300, 2600, 5200, 10000,

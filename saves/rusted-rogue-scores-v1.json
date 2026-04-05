@@ -2,6 +2,22 @@
   "version": 1,
   "entries": [
     {
+      "score": 6399,
+      "level": 5,
+      "turns": 399,
+      "monsters_defeated": 4,
+      "outcome": "defeated",
+      "recorded_at_unix": 1775397726
+    },
+    {
+      "score": 5016,
+      "level": 4,
+      "turns": 266,
+      "monsters_defeated": 3,
+      "outcome": "defeated",
+      "recorded_at_unix": 1775397812
+    },
+    {
       "score": 4047,
       "level": 3,
       "turns": 297,
@@ -144,22 +160,6 @@
       "monsters_defeated": 0,
       "outcome": "defeated",
       "recorded_at_unix": 1774808264
-    },
-    {
-      "score": 1017,
-      "level": 1,
-      "turns": 17,
-      "monsters_defeated": 0,
-      "outcome": "defeated",
-      "recorded_at_unix": 1774808265
-    },
-    {
-      "score": 1017,
-      "level": 1,
-      "turns": 17,
-      "monsters_defeated": 0,
-      "outcome": "defeated",
-      "recorded_at_unix": 1774808265
     }
   ]
 }
