@@ -3,14 +3,11 @@ name = "rusted-rogue"
 version = "0.1.0"
 edition = "2021"
 default-run = "rusted-rogue"
+build = "build.rs"
 
 [[bin]]
 name = "map_viewer"
 path = "src/bin/map_viewer.rs"
-
-[[bin]]
-name = "hotspot_bench"
-path = "src/bin/hotspot_bench.rs"
 
 [dependencies]
 bitflags = "2"
@@ -20,3 +17,7 @@ serde_json = "1"
 
 [dev-dependencies]
 proptest = "1"
+
+[target.'cfg(windows)'.build-dependencies]
+ico = "0.3"
+winresource = "0.1"

@@ -88,6 +88,8 @@ struct DoorLinkSnapshot {
 struct GameStateSnapshot {
     level: i16,
     turns: u64,
+    #[serde(default)]
+    gold: i64,
     quit_requested: bool,
     pending_direction: Option<String>,
     player_position: PositionSnapshot,
@@ -484,6 +486,7 @@ impl GameStateSnapshot {
         Self {
             level: state.level,
             turns: state.turns,
+            gold: state.gold,
             quit_requested: state.quit_requested,
             pending_direction: state.pending_direction.map(direction_to_string),
             player_position: PositionSnapshot::from_position(state.player_position),
@@ -554,6 +557,7 @@ impl GameStateSnapshot {
         Ok(GameState {
             level: self.level,
             turns: self.turns,
+            gold: self.gold,
             quit_requested: self.quit_requested,
             pending_direction: self
                 .pending_direction

@@ -5,7 +5,7 @@ use iced::{Color, Font, Point};
 
 use crate::core_types::{Position, TileFlags, DCOLS, DROWS};
 use crate::game_loop::GameLoop;
-use crate::inventory_items::ItemCategory;
+use crate::inventory_items::{total_armor_bonus, ItemCategory};
 
 use super::messages::render_last_message;
 
@@ -63,24 +63,24 @@ pub(super) fn cell_color(ch: char) -> Color {
 pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inventory: bool) {
     let lookups = RenderLookups::from_game(game);
 
-    for row in 0..DROWS {
-        for col in 0..DCOLS {
-            let ch = render_cell(game, Position::new(row as i16, col as i16), &lookups);
-            let color = cell_color(ch);
-            frame.fill_text(cell_text(ch.to_string(), col, row, color));
-        }
-    }
-
-    let status = render_status(game);
-    frame.fill_text(cell_text(status, 0, DROWS, Color::from_rgb(1.0, 1.0, 0.39)));
-
     let message = render_last_message(game);
     frame.fill_text(cell_text(
         message,
         0,
-        DROWS + 1,
+        0,
         Color::from_rgb(1.0, 0.78, 0.59),
     ));
+
+    for row in 0..DROWS {
+        for col in 0..DCOLS {
+            let ch = render_cell(game, Position::new(row as i16, col as i16), &lookups);
+            let color = cell_color(ch);
+            frame.fill_text(cell_text(ch.to_string(), col, row + 1, color));
+        }
+    }
+
+    let status = render_status(game);
+    frame.fill_text(cell_text(status, 0, DROWS + 1, Color::from_rgb(1.0, 1.0, 0.39)));
 
     // Overlay the inventory panel when 'i' is pressed or an item action is pending.
     let show_overlay = show_inventory || game.state().pending_item_action.is_some();
@@ -291,22 +291,24 @@ fn render_tile(tile: TileFlags) -> char {
 
 fn render_status(game: &GameLoop) -> String {
     let hunger = if game.state().is_weak {
-        " [WEAK]"
+        "  Weak"
     } else if game.state().is_hungry {
-        " [HUNGRY]"
+        "  Hungry"
     } else {
         ""
     };
+    let arm = total_armor_bonus(&game.state().inventory);
     format!(
-        "Level:{} Exp:{}({}) HP:{}/{} Str:{}{} Inv:{} Turns:{}",
+        "Level: {}  Gold: {}  Hp: {}({})  Str: {}({})  Arm: {}  Exp: {}/{}{}",
         game.state().level,
-        game.state().player_exp_points,
-        game.state().player_exp_level,
+        game.state().gold,
         game.state().player_hit_points,
         game.state().player_max_hit_points,
         game.state().player_strength,
+        game.state().player_max_strength,
+        arm,
+        game.state().player_exp_level,
+        game.state().player_exp_points,
         hunger,
-        game.state().inventory.len(),
-        game.state().turns,
     )
 }

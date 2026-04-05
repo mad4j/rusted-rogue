@@ -1,5 +1,6 @@
 mod canvas;
 mod help;
+mod icon;
 mod input;
 mod messages;
 mod renderer;
@@ -35,6 +36,7 @@ pub fn run(game: GameLoop) {
         .window(iced::window::Settings {
             size: Size::new(win_w, win_h),
             resizable: false,
+            icon: iced::window::icon::from_rgba(icon::icon_rgba(), 32, 32).ok(),
             ..Default::default()
         })
         .run_with(move || {

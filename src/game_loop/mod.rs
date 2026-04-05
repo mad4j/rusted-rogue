@@ -128,6 +128,7 @@ impl PendingItemAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameState {
     pub level: i16,
+    pub gold: i64,
     pub turns: u64,
     pub quit_requested: bool,
     pub pending_direction: Option<Direction>,
@@ -199,6 +200,7 @@ impl GameLoop {
         let mut game = Self {
             state: GameState {
                 level: 1,
+                gold: 0,
                 turns: 0,
                 quit_requested: false,
                 pending_direction: None,
