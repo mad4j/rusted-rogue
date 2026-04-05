@@ -26,10 +26,12 @@ const CELL_H: f32 = 16.0;
 const FONT_SIZE: f32 = 14.0;
 // Extra rows below the map for status and message lines
 const UI_ROWS: usize = 3;
+// Empty border around the game area (pixels on each side)
+pub(super) const PADDING: f32 = 8.0;
 
 pub fn run(game: GameLoop) {
-    let win_w = DCOLS as f32 * CELL_W;
-    let win_h = (DROWS + UI_ROWS) as f32 * CELL_H;
+    let win_w = DCOLS as f32 * CELL_W + 2.0 * PADDING;
+    let win_h = (DROWS + UI_ROWS) as f32 * CELL_H + 2.0 * PADDING;
 
     iced::application("Rusted Rogue", RogueApp::update, RogueApp::view)
         .subscription(RogueApp::subscription)
@@ -160,8 +162,8 @@ impl RogueApp {
                 help_page: self.help_page,
                 show_inventory: self.show_inventory,
             })
-            .width(Length::Fixed(DCOLS as f32 * CELL_W))
-            .height(Length::Fixed((DROWS + UI_ROWS) as f32 * CELL_H))
+            .width(Length::Fixed(DCOLS as f32 * CELL_W + 2.0 * PADDING))
+            .height(Length::Fixed((DROWS + UI_ROWS) as f32 * CELL_H + 2.0 * PADDING))
             .into(),
         }
     }

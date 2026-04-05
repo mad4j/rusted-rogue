@@ -102,8 +102,8 @@ pub(super) fn render_help_overlay(frame: &mut canvas::Frame, page: usize) {
     let total = HELP_PAGES.len();
 
     // Dark background rectangle – same dimensions as the inventory panel
-    let bg_x = PANEL_COL as f32 * super::CELL_W;
-    let bg_y = 0.0_f32;
+    let bg_x = PANEL_COL as f32 * super::CELL_W + super::PADDING;
+    let bg_y = super::PADDING;
     let bg_w = PANEL_WIDTH as f32 * super::CELL_W;
     let bg_h = (DROWS + 2) as f32 * super::CELL_H;
     frame.fill_rectangle(

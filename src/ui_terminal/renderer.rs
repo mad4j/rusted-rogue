@@ -21,7 +21,7 @@ pub(super) fn cell_text(
 ) -> canvas::Text {
     canvas::Text {
         content: content.into(),
-        position: Point::new(col as f32 * super::CELL_W, row as f32 * super::CELL_H),
+        position: Point::new(col as f32 * super::CELL_W + super::PADDING, row as f32 * super::CELL_H + super::PADDING),
         color,
         size: iced::Pixels(super::FONT_SIZE),
         line_height: iced::widget::text::LineHeight::Absolute(iced::Pixels(super::CELL_H)),
@@ -101,8 +101,8 @@ fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop, browsing
     let pending = &state.pending_item_action;
 
     // Dark background rectangle.
-    let bg_x = PANEL_COL as f32 * super::CELL_W;
-    let bg_y = 0.0_f32;
+    let bg_x = PANEL_COL as f32 * super::CELL_W + super::PADDING;
+    let bg_y = super::PADDING;
     let bg_w = PANEL_WIDTH as f32 * super::CELL_W;
     let bg_h = (DROWS + 2) as f32 * super::CELL_H;
     frame.fill_rectangle(
