@@ -43,18 +43,25 @@ pub enum SpecialHit {
     StealsItem,
     DrainsLife,
     DropsLevel,
+    /// Medusa: confuses the player from sight range (CONFUSES flag)
+    Confuse,
+    /// Dragon: breathes fire at range along a straight or diagonal line (FLAMES flag)
+    Flames,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusEffectEvent {
     Frozen { turns: u8 },
     Held,
-    Stung { max_hit_points_lost: i16 },
+    /// Rattlesnake sting: drains player strength by `amount`.
+    Stung { amount: i16 },
     ArmorRusted,
     GoldStolen,
     ItemStolen,
     LifeDrained { max_hit_points_lost: i16 },
     LevelDropped,
+    /// Medusa gaze: confuses the player for `turns` moves.
+    Confused { turns: u8 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,7 +80,7 @@ impl Monster {
                 kind,
                 position,
                 hit_points: 25,
-                attack_damage: 1,
+                attack_damage: 0,
                 special_hit: Some(SpecialHit::Rusts),
             },
             MonsterKind::Bat => Self {
@@ -95,7 +102,7 @@ impl Monster {
                 position,
                 hit_points: 145,
                 attack_damage: 24,
-                special_hit: None,
+                special_hit: Some(SpecialHit::Flames),
             },
             MonsterKind::Emu => Self {
                 kind,
@@ -107,8 +114,8 @@ impl Monster {
             MonsterKind::VenusFlytrap => Self {
                 kind,
                 position,
-                hit_points: 4,
-                attack_damage: 1,
+                hit_points: 73,
+                attack_damage: 25,
                 special_hit: Some(SpecialHit::Hold),
             },
             MonsterKind::Griffin => Self {
@@ -128,8 +135,8 @@ impl Monster {
             MonsterKind::IceMonster => Self {
                 kind,
                 position,
-                hit_points: 3,
-                attack_damage: 1,
+                hit_points: 15,
+                attack_damage: 0,
                 special_hit: Some(SpecialHit::Freeze),
             },
             MonsterKind::Jabberwock => Self {
@@ -142,8 +149,8 @@ impl Monster {
             MonsterKind::Kestrel => Self {
                 kind,
                 position,
-                hit_points: 2,
-                attack_damage: 1,
+                hit_points: 10,
+                attack_damage: 4,
                 special_hit: None,
             },
             MonsterKind::Leprechaun => Self {
@@ -158,7 +165,7 @@ impl Monster {
                 position,
                 hit_points: 97,
                 attack_damage: 16,
-                special_hit: None,
+                special_hit: Some(SpecialHit::Confuse),
             },
             MonsterKind::Nymph => Self {
                 kind,
@@ -191,8 +198,8 @@ impl Monster {
             MonsterKind::Rattlesnake => Self {
                 kind,
                 position,
-                hit_points: 2,
-                attack_damage: 1,
+                hit_points: 19,
+                attack_damage: 10,
                 special_hit: Some(SpecialHit::Sting),
             },
             MonsterKind::Snake => Self {
@@ -449,6 +456,7 @@ pub fn tick_monsters(
     monsters: &mut [Monster],
     level: &GeneratedLevel,
     player_position: Position,
+    rng: &mut GameRng,
 ) -> Vec<CombatEvent> {
     let mut occupied_positions: HashSet<Position> =
         monsters.iter().map(|monster| monster.position).collect();
@@ -458,7 +466,7 @@ pub fn tick_monsters(
         let previous_position = monster.position;
         occupied_positions.remove(&previous_position);
 
-        match next_monster_action(monster, player_position, level, &occupied_positions) {
+        match next_monster_action(monster, player_position, level, &occupied_positions, rng) {
             MonsterAction::Move(next_position) => {
                 monster.position = next_position;
                 occupied_positions.insert(next_position);
@@ -479,6 +487,22 @@ pub fn tick_monsters(
                     });
                 }
             }
+            MonsterAction::ConfusePlayer => {
+                occupied_positions.insert(previous_position);
+                events.push(CombatEvent::MonsterAppliedEffect {
+                    monster_kind: monster.kind,
+                    position: monster.position,
+                    effect: StatusEffectEvent::Confused { turns: 12 },
+                });
+            }
+            MonsterAction::FireBreath { damage } => {
+                occupied_positions.insert(previous_position);
+                events.push(CombatEvent::MonsterHitPlayer {
+                    monster_kind: monster.kind,
+                    position: monster.position,
+                    damage,
+                });
+            }
             MonsterAction::Wait => {
                 occupied_positions.insert(previous_position);
             }
@@ -491,6 +515,10 @@ pub fn tick_monsters(
 enum MonsterAction {
     Move(Position),
     AttackPlayer,
+    /// Medusa: confuse the player from sight range.
+    ConfusePlayer,
+    /// Dragon: fire breath along a line at range.
+    FireBreath { damage: i16 },
     Wait,
 }
 
@@ -499,7 +527,19 @@ fn next_monster_action(
     player_position: Position,
     level: &GeneratedLevel,
     occupied_positions: &HashSet<Position>,
+    rng: &mut GameRng,
 ) -> MonsterAction {
+    // ── Medusa: confuse from sight range (checked before physical attack) ──
+    if monster.special_hit == Some(SpecialHit::Confuse) {
+        let row_dist = (player_position.row - monster.position.row).abs();
+        let col_dist = (player_position.col - monster.position.col).abs();
+        // visible when within ~5 tiles; 55% chance to confuse (matches original m_confuse)
+        if row_dist <= 5 && col_dist <= 5 && rng.get_rand(0, 99) < 55 {
+            return MonsterAction::ConfusePlayer;
+        }
+    }
+
+    // ── Normal movement / adjacent attack ──
     let row_step = (player_position.row - monster.position.row).signum();
     let col_step = (player_position.col - monster.position.col).signum();
 
@@ -530,6 +570,18 @@ fn next_monster_action(
         }
     }
 
+    // ── Dragon: fire breath when not adjacent (collinear LOS, max 7 tiles, 50% chance) ──
+    if monster.special_hit == Some(SpecialHit::Flames) {
+        let row_dist = (player_position.row - monster.position.row).abs();
+        let col_dist = (player_position.col - monster.position.col).abs();
+        let in_line = row_dist == 0 || col_dist == 0 || row_dist == col_dist;
+        let in_range = row_dist <= 7 && col_dist <= 7;
+        if in_line && in_range && rng.get_rand(0, 1) == 0 {
+            // Fire breath deals the monster's full attack damage
+            return MonsterAction::FireBreath { damage: monster.attack_damage };
+        }
+    }
+
     MonsterAction::Wait
 }
 
@@ -537,9 +589,7 @@ fn special_hit_event(special_hit: SpecialHit) -> Option<StatusEffectEvent> {
     match special_hit {
         SpecialHit::Freeze => Some(StatusEffectEvent::Frozen { turns: 2 }),
         SpecialHit::Hold => Some(StatusEffectEvent::Held),
-        SpecialHit::Sting => Some(StatusEffectEvent::Stung {
-            max_hit_points_lost: 1,
-        }),
+        SpecialHit::Sting => Some(StatusEffectEvent::Stung { amount: 1 }),
         SpecialHit::Rusts => Some(StatusEffectEvent::ArmorRusted),
         SpecialHit::StealsGold => Some(StatusEffectEvent::GoldStolen),
         SpecialHit::StealsItem => Some(StatusEffectEvent::ItemStolen),
@@ -547,6 +597,9 @@ fn special_hit_event(special_hit: SpecialHit) -> Option<StatusEffectEvent> {
             max_hit_points_lost: 2,
         }),
         SpecialHit::DropsLevel => Some(StatusEffectEvent::LevelDropped),
+        // Confuse and Flames are range actions handled in next_monster_action;
+        // they never reach this code path.
+        SpecialHit::Confuse | SpecialHit::Flames => None,
     }
 }
 #[cfg(test)]
@@ -582,14 +635,14 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(7, 12))];
 
-        let first_turn = tick_monsters(&mut monsters, &level, player_position);
+        let first_turn = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(1));
 
         assert!(first_turn.is_empty());
         assert_eq!(monsters[0].position, Position::new(7, 11));
 
-        let second_turn = tick_monsters(&mut monsters, &level, player_position);
-        let third_turn = tick_monsters(&mut monsters, &level, player_position);
-        let fourth_turn = tick_monsters(&mut monsters, &level, player_position);
+        let second_turn = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(2));
+        let third_turn = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(3));
+        let fourth_turn = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(4));
 
         assert!(second_turn.is_empty());
         assert!(third_turn.is_empty());
@@ -600,7 +653,7 @@ mod tests {
             vec![CombatEvent::MonsterHitPlayer {
                 monster_kind: MonsterKind::Kestrel,
                 position: Position::new(7, 9),
-                damage: 1,
+                damage: 4,
             }]
         );
     }
@@ -631,7 +684,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(7, 9))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position);
+        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
         assert_eq!(
             events,
@@ -639,7 +692,7 @@ mod tests {
                 CombatEvent::MonsterHitPlayer {
                     monster_kind: MonsterKind::IceMonster,
                     position: Position::new(7, 9),
-                    damage: 1,
+                    damage: 0,
                 },
                 CombatEvent::MonsterAppliedEffect {
                     monster_kind: MonsterKind::IceMonster,
@@ -657,7 +710,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Aquator, Position::new(7, 9))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position);
+        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
         assert!(events.iter().any(|e| matches!(
             e,
@@ -675,7 +728,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Vampire, Position::new(7, 9))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position);
+        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
         assert!(events.iter().any(|e| matches!(
             e,
@@ -695,7 +748,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Leprechaun, Position::new(7, 9))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position);
+        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
         assert!(events.iter().any(|e| matches!(
             e,
@@ -713,7 +766,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Nymph, Position::new(7, 9))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position);
+        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
         assert!(events.iter().any(|e| matches!(
             e,
@@ -731,7 +784,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Wraith, Position::new(7, 9))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position);
+        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
         assert!(events.iter().any(|e| matches!(
             e,

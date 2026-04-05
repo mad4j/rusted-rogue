@@ -103,6 +103,8 @@ struct GameStateSnapshot {
     is_hungry: bool,
     is_weak: bool,
     frozen_turns: u8,
+    #[serde(default)]
+    confused_turns: u8,
     monsters_defeated: u64,
     monsters: Vec<MonsterSnapshot>,
     last_turn_events: Vec<CombatEventSnapshot>,
@@ -140,12 +142,13 @@ struct MonsterSnapshot {
 enum StatusEffectSnapshot {
     Frozen { turns: u8 },
     Held,
-    Stung { max_hit_points_lost: i16 },
+    Stung { amount: i16 },
     ArmorRusted,
     GoldStolen,
     ItemStolen,
     LifeDrained { max_hit_points_lost: i16 },
     LevelDropped,
+    Confused { turns: u8 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -500,6 +503,7 @@ impl GameStateSnapshot {
             is_hungry: state.is_hungry,
             is_weak: state.is_weak,
             frozen_turns: state.frozen_turns,
+            confused_turns: state.confused_turns,
             monsters_defeated: state.monsters_defeated,
             monsters: state
                 .monsters
@@ -575,6 +579,7 @@ impl GameStateSnapshot {
             is_hungry: self.is_hungry,
             is_weak: self.is_weak,
             frozen_turns: self.frozen_turns,
+            confused_turns: self.confused_turns,
             monsters_defeated: self.monsters_defeated,
             monsters: self
                 .monsters
@@ -702,11 +707,9 @@ impl CombatEventSnapshot {
                         StatusEffectSnapshot::Frozen { turns: *turns }
                     }
                     StatusEffectEvent::Held => StatusEffectSnapshot::Held,
-                    StatusEffectEvent::Stung {
-                        max_hit_points_lost,
-                    } => StatusEffectSnapshot::Stung {
-                        max_hit_points_lost: *max_hit_points_lost,
-                    },
+                    StatusEffectEvent::Stung { amount } => {
+                        StatusEffectSnapshot::Stung { amount: *amount }
+                    }
                     StatusEffectEvent::ArmorRusted => StatusEffectSnapshot::ArmorRusted,
                     StatusEffectEvent::GoldStolen => StatusEffectSnapshot::GoldStolen,
                     StatusEffectEvent::ItemStolen => StatusEffectSnapshot::ItemStolen,
@@ -716,6 +719,9 @@ impl CombatEventSnapshot {
                         }
                     }
                     StatusEffectEvent::LevelDropped => StatusEffectSnapshot::LevelDropped,
+                    StatusEffectEvent::Confused { turns } => {
+                        StatusEffectSnapshot::Confused { turns: *turns }
+                    }
                 },
             },
         }
@@ -753,11 +759,7 @@ impl CombatEventSnapshot {
                 effect: match effect {
                     StatusEffectSnapshot::Frozen { turns } => StatusEffectEvent::Frozen { turns },
                     StatusEffectSnapshot::Held => StatusEffectEvent::Held,
-                    StatusEffectSnapshot::Stung {
-                        max_hit_points_lost,
-                    } => StatusEffectEvent::Stung {
-                        max_hit_points_lost,
-                    },
+                    StatusEffectSnapshot::Stung { amount } => StatusEffectEvent::Stung { amount },
                     StatusEffectSnapshot::ArmorRusted => StatusEffectEvent::ArmorRusted,
                     StatusEffectSnapshot::GoldStolen => StatusEffectEvent::GoldStolen,
                     StatusEffectSnapshot::ItemStolen => StatusEffectEvent::ItemStolen,
@@ -765,6 +767,9 @@ impl CombatEventSnapshot {
                         StatusEffectEvent::LifeDrained { max_hit_points_lost }
                     }
                     StatusEffectSnapshot::LevelDropped => StatusEffectEvent::LevelDropped,
+                    StatusEffectSnapshot::Confused { turns } => {
+                        StatusEffectEvent::Confused { turns }
+                    }
                 },
             },
         })
@@ -993,6 +998,8 @@ fn special_hit_to_string(hit: SpecialHit) -> &'static str {
         SpecialHit::StealsItem => "StealsItem",
         SpecialHit::DrainsLife => "DrainsLife",
         SpecialHit::DropsLevel => "DropsLevel",
+        SpecialHit::Confuse => "Confuse",
+        SpecialHit::Flames => "Flames",
     }
 }
 
@@ -1006,6 +1013,8 @@ fn special_hit_from_string(hit: &str) -> io::Result<SpecialHit> {
         "StealsItem" => Ok(SpecialHit::StealsItem),
         "DrainsLife" => Ok(SpecialHit::DrainsLife),
         "DropsLevel" => Ok(SpecialHit::DropsLevel),
+        "Confuse" => Ok(SpecialHit::Confuse),
+        "Flames" => Ok(SpecialHit::Flames),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unknown special hit in save: {hit}"),

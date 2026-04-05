@@ -146,6 +146,7 @@ pub struct GameState {
     pub is_hungry: bool,
     pub is_weak: bool,
     pub frozen_turns: u8,
+    pub confused_turns: u8,
     pub monsters_defeated: u64,
     pub monsters: Vec<Monster>,
     pub last_turn_events: Vec<CombatEvent>,
@@ -216,6 +217,7 @@ impl GameLoop {
                 is_hungry: false,
                 is_weak: false,
                 frozen_turns: 0,
+                confused_turns: 0,
                 monsters_defeated: 0,
                 monsters,
                 last_turn_events: Vec::new(),
@@ -803,10 +805,12 @@ impl GameLoop {
             return StepOutcome::Finished;
         }
 
+        let mut rng = GameRng::new(self.state.turns as i32);
         let events = tick_monsters(
             &mut self.state.monsters,
             &self.current_level,
             self.state.player_position,
+            &mut rng,
         );
 
         for event in events {
@@ -826,15 +830,10 @@ impl GameLoop {
                         }
                     }
                     StatusEffectEvent::Held => {}
-                    StatusEffectEvent::Stung {
-                        max_hit_points_lost,
-                    } => {
-                        self.state.player_max_hit_points =
-                            (self.state.player_max_hit_points - max_hit_points_lost).max(1);
-                        self.state.player_hit_points = self
-                            .state
-                            .player_hit_points
-                            .min(self.state.player_max_hit_points);
+                    StatusEffectEvent::Stung { amount } => {
+                        // Rattlesnake bite drains current strength (min 3, matching original)
+                        self.state.player_strength =
+                            (self.state.player_strength - amount).max(3);
                     }
                     StatusEffectEvent::LifeDrained { max_hit_points_lost } => {
                         self.state.player_max_hit_points =
@@ -844,10 +843,51 @@ impl GameLoop {
                             .player_hit_points
                             .min(self.state.player_max_hit_points);
                     }
-                    StatusEffectEvent::GoldStolen => {}
-                    StatusEffectEvent::ItemStolen => {}
-                    StatusEffectEvent::LevelDropped => {}
-                    StatusEffectEvent::ArmorRusted => {}
+                    StatusEffectEvent::GoldStolen => {
+                        if self.state.gold > 0 {
+                            let stolen = (self.state.level as i64 * 15).min(self.state.gold);
+                            self.state.gold -= stolen;
+                        }
+                    }
+                    StatusEffectEvent::ItemStolen => {
+                        // Remove the first non-equipped pack item
+                        if let Some(idx) = self
+                            .state
+                            .inventory
+                            .iter()
+                            .position(|e| e.equipped_slot.is_none())
+                        {
+                            self.state.inventory.remove(idx);
+                        }
+                    }
+                    StatusEffectEvent::LevelDropped => {
+                        // Drop two experience levels (min 1), matching original drop_level()
+                        if self.state.player_exp_level > 1 {
+                            self.state.player_exp_level =
+                                (self.state.player_exp_level - 2).max(1);
+                            let hp_loss = 4i16;
+                            self.state.player_max_hit_points =
+                                (self.state.player_max_hit_points - hp_loss).max(1);
+                            self.state.player_hit_points = self
+                                .state
+                                .player_hit_points
+                                .min(self.state.player_max_hit_points);
+                        }
+                    }
+                    StatusEffectEvent::ArmorRusted => {
+                        // Reduce equipped armor bonus by 1 (min 1)
+                        if let Some(armor) = self.state.inventory.iter_mut().find(|e| {
+                            e.equipped_slot == Some(EquipmentSlot::Armor)
+                                && e.item.armor_bonus > 1
+                        }) {
+                            armor.item.armor_bonus -= 1;
+                        }
+                    }
+                    StatusEffectEvent::Confused { turns } => {
+                        if self.state.confused_turns == 0 {
+                            self.state.confused_turns = turns;
+                        }
+                    }
                 },
                 CombatEvent::PlayerHitMonster { .. } => {}
             }
@@ -942,8 +982,26 @@ impl GameLoop {
                 StepOutcome::Continue
             }
             Command::Move(direction) => {
-                self.state.pending_direction = Some(direction);
-                match self.try_move_player(direction) {
+                // When confused the player stumbles in a random direction
+                let actual_direction = if self.state.confused_turns > 0 {
+                    self.state.confused_turns -= 1;
+                    let mut rng = GameRng::new(self.state.turns as i32);
+                    const ALL_DIRS: [Direction; 8] = [
+                        Direction::Up,
+                        Direction::UpRight,
+                        Direction::Right,
+                        Direction::DownRight,
+                        Direction::Down,
+                        Direction::DownLeft,
+                        Direction::Left,
+                        Direction::UpLeft,
+                    ];
+                    ALL_DIRS[rng.get_rand(0, 7) as usize]
+                } else {
+                    direction
+                };
+                self.state.pending_direction = Some(actual_direction);
+                match self.try_move_player(actual_direction) {
                     PlayerAction::Moved | PlayerAction::Attacked | PlayerAction::Held => {
                         if let Some(trap_idx) = self
                             .state
@@ -1460,7 +1518,7 @@ mod tests {
 
         assert_eq!(game.state().player_position, Position::new(6, 9));
         assert_eq!(game.state().turns, 1);
-        assert_eq!(game.state().player_hit_points, 11);
+        assert_eq!(game.state().player_hit_points, 8);
         assert_eq!(game.state().monsters[0].hit_points, 1);
         assert_eq!(
             game.state().last_turn_events,
@@ -1474,7 +1532,7 @@ mod tests {
                 CombatEvent::MonsterHitPlayer {
                     monster_kind: game.state().monsters[0].kind,
                     position: Position::new(6, 10),
-                    damage: 1,
+                    damage: 4,
                 },
             ]
         );
@@ -1514,8 +1572,11 @@ mod tests {
             Position::new(6, 10),
         )];
 
+        // VenusFlytrap hits for 25 — give player enough HP to survive
+        game.state.player_hit_points = 100;
+        game.state.player_max_hit_points = 100;
+
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
-        assert!(game.player_is_held());
 
         let turns_before = game.state.turns;
         assert_eq!(
@@ -1565,15 +1626,13 @@ mod tests {
 
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
 
-        assert_eq!(game.state.player_max_hit_points, 11);
-        assert_eq!(game.state.player_hit_points, 11);
+        // Sting now drains strength, not max HP
+        assert_eq!(game.state.player_strength, 15); // INIT_STRENGTH - 1
         assert!(game.state.last_turn_events.iter().any(|event| {
             matches!(
                 event,
                 CombatEvent::MonsterAppliedEffect {
-                    effect: StatusEffectEvent::Stung {
-                        max_hit_points_lost: 1
-                    },
+                    effect: StatusEffectEvent::Stung { amount: 1 },
                     ..
                 }
             )

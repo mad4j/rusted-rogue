@@ -84,10 +84,8 @@ fn combat_message(event: &CombatEvent) -> String {
             StatusEffectEvent::Held => {
                 format!("{} holds you in place.", monster_name(*monster_kind))
             }
-            StatusEffectEvent::Stung {
-                max_hit_points_lost,
-            } => format!(
-                "{} stings you. Max HP -{max_hit_points_lost}.",
+            StatusEffectEvent::Stung { amount } => format!(
+                "{} bites you. Strength -{amount}.",
                 monster_name(*monster_kind)
             ),
             StatusEffectEvent::ArmorRusted => {
@@ -106,6 +104,10 @@ fn combat_message(event: &CombatEvent) -> String {
             StatusEffectEvent::LevelDropped => {
                 format!("{} drains your experience.", monster_name(*monster_kind))
             }
+            StatusEffectEvent::Confused { turns } => format!(
+                "The gaze of the {} confuses you for {turns} moves.",
+                monster_name(*monster_kind)
+            ),
         },
     }
 }
