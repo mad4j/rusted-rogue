@@ -1,13 +1,13 @@
 use iced::widget::canvas;
 use iced::{Color, Point};
 
-use crate::core_types::DROWS;
+use crate::core_types::{DCOLS, DROWS};
 
 use super::renderer::{cell_color, cell_text};
 
 // Panel constants – mirror the inventory overlay
 const PANEL_COL: usize = 42;
-const PANEL_WIDTH: usize = 36;
+const PANEL_WIDTH: usize = DCOLS - PANEL_COL; // = 38, extends to the right edge of the game area
 
 // ---------------------------------------------------------------------------
 // Help content
@@ -21,7 +21,7 @@ pub(super) enum HelpLine {
     Empty,
 }
 
-// Page 1 – movement and item actions
+// Page 1 – movement and actions (22 lines; content rows 2-23 within the 24-row panel)
 const HELP_PAGE_1: &[HelpLine] = &[
     HelpLine::Section("MOVEMENT"),
     HelpLine::Binding("h", "left"),
@@ -45,15 +45,16 @@ const HELP_PAGE_1: &[HelpLine] = &[
     HelpLine::Binding("t", "throw"),
     HelpLine::Binding("w", "wield"),
     HelpLine::Empty,
+];
+
+// Page 2 – armor, rings and game controls (22 lines)
+const HELP_PAGE_2: &[HelpLine] = &[
     HelpLine::Section("ARMOR & RINGS"),
     HelpLine::Binding("W", "wear"),
     HelpLine::Binding("T", "take off"),
     HelpLine::Binding("P", "ring on"),
     HelpLine::Binding("R", "ring off"),
-];
-
-// Page 2 – game controls and map legend
-const HELP_PAGE_2: &[HelpLine] = &[
+    HelpLine::Empty,
     HelpLine::Section("GAME"),
     HelpLine::Binding(".", "rest"),
     HelpLine::Binding(">", "descend"),
@@ -70,6 +71,10 @@ const HELP_PAGE_2: &[HelpLine] = &[
     HelpLine::Symbol('-', "horiz. wall"),
     HelpLine::Symbol('|', "vert. wall"),
     HelpLine::Symbol('>', "stairs"),
+];
+
+// Page 3 – terrain continued, items and entities (15 lines)
+const HELP_PAGE_3: &[HelpLine] = &[
     HelpLine::Symbol('^', "trap"),
     HelpLine::Empty,
     HelpLine::Section("ITEMS"),
@@ -84,9 +89,10 @@ const HELP_PAGE_2: &[HelpLine] = &[
     HelpLine::Section("ENTITIES"),
     HelpLine::Symbol('@', "player"),
     HelpLine::Symbol('k', "monsters a-z/A-Z"),
+    HelpLine::Empty,
 ];
 
-pub(super) const HELP_PAGES: &[&[HelpLine]] = &[HELP_PAGE_1, HELP_PAGE_2];
+pub(super) const HELP_PAGES: &[&[HelpLine]] = &[HELP_PAGE_1, HELP_PAGE_2, HELP_PAGE_3];
 
 // ---------------------------------------------------------------------------
 // Help overlay rendering  (same panel style as inventory)
@@ -119,9 +125,10 @@ pub(super) fn render_help_overlay(frame: &mut canvas::Frame, page: usize) {
     let indicator = format!("  -- {}/{} --", page + 1, total);
     frame.fill_text(cell_text(indicator, PANEL_COL, 1, DIM));
 
-    // Content lines
+    // Content lines – stop before the footer row so nothing overflows the panel
     for (i, line) in HELP_PAGES[page].iter().enumerate() {
         let row = i + 2;
+        if row >= DROWS { break; }
         match line {
             HelpLine::Section(text) => {
                 frame.fill_text(cell_text(*text, PANEL_COL + 1, row, CYAN));
@@ -138,13 +145,12 @@ pub(super) fn render_help_overlay(frame: &mut canvas::Frame, page: usize) {
         }
     }
 
-    // Navigation footer – same row as inventory footer
-    let nav = if page == 0 && total > 1 {
-        "-> next  |  any key=close"
-    } else if page + 1 == total && page > 0 {
-        "<- back  |  any key=close"
-    } else {
-        "any key to close"
+    // Navigation footer – bottom of the panel
+    let nav = match (page > 0, page + 1 < total) {
+        (false, true)  => "->     |  any key=close",
+        (true,  false) => "<-     |  any key=close",
+        (true,  true)  => "<- ->  |  any key=close",
+        (false, false) => "any key to close",
     };
-    frame.fill_text(cell_text(nav, PANEL_COL, DROWS, DIM));
+    frame.fill_text(cell_text(nav, PANEL_COL, DROWS + 1, DIM));
 }

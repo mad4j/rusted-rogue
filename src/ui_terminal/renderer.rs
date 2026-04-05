@@ -95,7 +95,7 @@ fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop, browsing
 
     // Panel starts at column 42, leaving the dungeon visible on the left.
     const PANEL_COL: usize = 42;
-    const PANEL_WIDTH: usize = 36; // characters
+    const PANEL_WIDTH: usize = DCOLS - PANEL_COL; // extends to the right edge of the game area
 
     let state = game.state();
     let pending = &state.pending_item_action;
@@ -149,6 +149,8 @@ fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop, browsing
         ));
     } else {
         for (idx, entry) in items.iter().enumerate() {
+            let row = 2 + idx;
+            if row >= DROWS { break; } // clamp to panel height
             let slot_label = match entry.equipped_slot {
                 Some(EquipmentSlot::Weapon) => " (weapon in hand)",
                 Some(EquipmentSlot::Armor) => " (being worn)",
@@ -167,7 +169,7 @@ fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop, browsing
             frame.fill_text(cell_text(
                 line,
                 PANEL_COL,
-                2 + idx,
+                row,
                 Color::from_rgb(0.85, 0.85, 0.85),
             ));
         }
@@ -181,7 +183,7 @@ fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop, browsing
     } else {
         String::new()
     };
-    let footer_row = DROWS;
+    let footer_row = DROWS + 1;
     frame.fill_text(cell_text(
         footer,
         PANEL_COL,
