@@ -276,4 +276,5 @@ mod tests {
             prop_assert!(generated.grid.is_walkable(spawn.row, spawn.col));
         }
     }
+
 }

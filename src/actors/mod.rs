@@ -633,12 +633,12 @@ mod tests {
         let mut rng = GameRng::new(12345);
         let level = generate_level(&mut rng);
         let player_position = level.spawn_position();
-        let mut monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(7, 12))];
+        let mut monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(3, 22))];
 
         let first_turn = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(1));
 
         assert!(first_turn.is_empty());
-        assert_eq!(monsters[0].position, Position::new(7, 11));
+        assert_eq!(monsters[0].position, Position::new(3, 21));
 
         let second_turn = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(2));
         let third_turn = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(3));
@@ -646,13 +646,13 @@ mod tests {
 
         assert!(second_turn.is_empty());
         assert!(third_turn.is_empty());
-        assert_eq!(monsters[0].position, Position::new(7, 9));
+        assert_eq!(monsters[0].position, Position::new(3, 19));
         assert_ne!(monsters[0].position, player_position);
         assert_eq!(
             fourth_turn,
             vec![CombatEvent::MonsterHitPlayer {
                 monster_kind: MonsterKind::Kestrel,
-                position: Position::new(7, 9),
+                position: Position::new(3, 19),
                 damage: 4,
             }]
         );
@@ -682,7 +682,7 @@ mod tests {
         let mut rng = GameRng::new(12345);
         let level = generate_level(&mut rng);
         let player_position = level.spawn_position();
-        let mut monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(7, 9))];
+        let mut monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(4, 18))];
 
         let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
@@ -691,12 +691,12 @@ mod tests {
             vec![
                 CombatEvent::MonsterHitPlayer {
                     monster_kind: MonsterKind::IceMonster,
-                    position: Position::new(7, 9),
+                    position: Position::new(4, 18),
                     damage: 0,
                 },
                 CombatEvent::MonsterAppliedEffect {
                     monster_kind: MonsterKind::IceMonster,
-                    position: Position::new(7, 9),
+                    position: Position::new(4, 18),
                     effect: StatusEffectEvent::Frozen { turns: 2 },
                 },
             ]
@@ -708,7 +708,7 @@ mod tests {
         let mut rng = GameRng::new(12345);
         let level = generate_level(&mut rng);
         let player_position = level.spawn_position();
-        let mut monsters = vec![Monster::new(MonsterKind::Aquator, Position::new(7, 9))];
+        let mut monsters = vec![Monster::new(MonsterKind::Aquator, Position::new(4, 18))];
 
         let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
@@ -726,7 +726,7 @@ mod tests {
         let mut rng = GameRng::new(12345);
         let level = generate_level(&mut rng);
         let player_position = level.spawn_position();
-        let mut monsters = vec![Monster::new(MonsterKind::Vampire, Position::new(7, 9))];
+        let mut monsters = vec![Monster::new(MonsterKind::Vampire, Position::new(4, 18))];
 
         let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
@@ -746,7 +746,7 @@ mod tests {
         let mut rng = GameRng::new(12345);
         let level = generate_level(&mut rng);
         let player_position = level.spawn_position();
-        let mut monsters = vec![Monster::new(MonsterKind::Leprechaun, Position::new(7, 9))];
+        let mut monsters = vec![Monster::new(MonsterKind::Leprechaun, Position::new(4, 18))];
 
         let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
@@ -764,7 +764,7 @@ mod tests {
         let mut rng = GameRng::new(12345);
         let level = generate_level(&mut rng);
         let player_position = level.spawn_position();
-        let mut monsters = vec![Monster::new(MonsterKind::Nymph, Position::new(7, 9))];
+        let mut monsters = vec![Monster::new(MonsterKind::Nymph, Position::new(4, 18))];
 
         let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
@@ -782,7 +782,7 @@ mod tests {
         let mut rng = GameRng::new(12345);
         let level = generate_level(&mut rng);
         let player_position = level.spawn_position();
-        let mut monsters = vec![Monster::new(MonsterKind::Wraith, Position::new(7, 9))];
+        let mut monsters = vec![Monster::new(MonsterKind::Wraith, Position::new(4, 18))];
 
         let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 

@@ -1,14 +1,14 @@
 use bitflags::bitflags;
 
-pub const DROWS: usize = 32;
-pub const DCOLS: usize = 60;
+pub const DROWS: usize = 24;
+pub const DCOLS: usize = 80;
 pub const MAXROOMS: usize = 9;
 pub const MAX_TRAPS: usize = 10;
 pub const MIN_ROW: i16 = 1;
-pub const ROW1: i16 = 11;
-pub const ROW2: i16 = 21;
-pub const COL1: i16 = 20;
-pub const COL2: i16 = 40;
+pub const ROW1: i16 = 7;
+pub const ROW2: i16 = 15;
+pub const COL1: i16 = 26;
+pub const COL2: i16 = 52;
 
 pub const INIT_STRENGTH: i16 = 16;
 pub const INIT_FOOD: i32 = 1250;
@@ -94,15 +94,15 @@ mod tests {
 
     #[test]
     fn map_limits_match_legacy() {
-        assert_eq!(DROWS, 32);
-        assert_eq!(DCOLS, 60);
+        assert_eq!(DROWS, 24);
+        assert_eq!(DCOLS, 80);
         assert_eq!(MAXROOMS, 9);
         assert_eq!(MAX_TRAPS, 10);
         assert_eq!(MIN_ROW, 1);
-        assert_eq!(ROW1, 11);
-        assert_eq!(ROW2, 21);
-        assert_eq!(COL1, 20);
-        assert_eq!(COL2, 40);
+        assert_eq!(ROW1, 7);
+        assert_eq!(ROW2, 15);
+        assert_eq!(COL1, 26);
+        assert_eq!(COL2, 52);
     }
 
     #[test]

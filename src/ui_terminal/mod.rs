@@ -20,12 +20,12 @@ use canvas::GameCanvas;
 const SPLASH_BYTES: &[u8] = include_bytes!("../../resources/splash.png");
 
 // Pixel width/height of each console cell (8-pixel glyph × 2× scale)
-const CELL_W: f32 = 16.0;
+const CELL_W: f32 = 10.0;
 const CELL_H: f32 = 16.0;
 // Font size used to render each glyph inside a cell
 const FONT_SIZE: f32 = 14.0;
 // Extra rows below the map for status and message lines
-const UI_ROWS: usize = 3;
+const UI_ROWS: usize = 2;
 // Empty border around the game area (pixels on each side)
 pub(super) const PADDING: f32 = 8.0;
 
@@ -149,7 +149,7 @@ impl RogueApp {
         Task::none()
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         match self.screen {
             Screen::Splash => img_widget::Image::new(self.splash_handle.clone())
                 .width(Length::Fill)
