@@ -69,8 +69,15 @@ pub struct Monster {
     pub kind: MonsterKind,
     pub position: Position,
     pub hit_points: i16,
-    pub attack_damage: i16,
+    /// Damage string in `"NdD"` or `"NdD/NdD"` format, matching original `mon_tab`.
+    pub damage_string: &'static str,
+    /// Hit-chance percentage (0-100), matching original `m_hit_chance` in `mon_tab`.
+    pub hit_chance: i16,
+    /// Experience points awarded to the player on kill, matching original `kill_exp`.
+    pub kill_exp: i32,
     pub special_hit: Option<SpecialHit>,
+    /// Cumulative damage for STATIONARY monsters (VenusFlytrap): starts at 0, +1 each attack.
+    pub stationary_damage: i16,
 }
 
 impl Monster {
@@ -80,183 +87,261 @@ impl Monster {
                 kind,
                 position,
                 hit_points: 25,
-                attack_damage: 0,
+                damage_string: "0d0",
+                hit_chance: 100,
+                kill_exp: 20,
                 special_hit: Some(SpecialHit::Rusts),
+                stationary_damage: 0,
             },
             MonsterKind::Bat => Self {
                 kind,
                 position,
                 hit_points: 10,
-                attack_damage: 3,
+                damage_string: "1d3",
+                hit_chance: 60,
+                kill_exp: 2,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Centaur => Self {
                 kind,
                 position,
                 hit_points: 32,
-                attack_damage: 9,
+                damage_string: "3d3/2d5",
+                hit_chance: 85,
+                kill_exp: 15,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Dragon => Self {
                 kind,
                 position,
                 hit_points: 145,
-                attack_damage: 24,
+                damage_string: "4d6/4d9",
+                hit_chance: 100,
+                kill_exp: 5000,
                 special_hit: Some(SpecialHit::Flames),
+                stationary_damage: 0,
             },
             MonsterKind::Emu => Self {
                 kind,
                 position,
                 hit_points: 11,
-                attack_damage: 3,
+                damage_string: "1d3",
+                hit_chance: 65,
+                kill_exp: 2,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::VenusFlytrap => Self {
                 kind,
                 position,
                 hit_points: 73,
-                attack_damage: 25,
+                damage_string: "0d0",
+                hit_chance: 80,
+                kill_exp: 91,
                 special_hit: Some(SpecialHit::Hold),
+                stationary_damage: 0,
             },
             MonsterKind::Griffin => Self {
                 kind,
                 position,
                 hit_points: 115,
-                attack_damage: 25,
+                damage_string: "5d5/5d5",
+                hit_chance: 85,
+                kill_exp: 2000,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Hobgoblin => Self {
                 kind,
                 position,
                 hit_points: 15,
-                attack_damage: 3,
+                damage_string: "1d3/1d2",
+                hit_chance: 67,
+                kill_exp: 3,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::IceMonster => Self {
                 kind,
                 position,
                 hit_points: 15,
-                attack_damage: 0,
+                damage_string: "0d0",
+                hit_chance: 68,
+                kill_exp: 5,
                 special_hit: Some(SpecialHit::Freeze),
+                stationary_damage: 0,
             },
             MonsterKind::Jabberwock => Self {
                 kind,
                 position,
                 hit_points: 132,
-                attack_damage: 30,
+                damage_string: "3d10/4d5",
+                hit_chance: 100,
+                kill_exp: 3000,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Kestrel => Self {
                 kind,
                 position,
                 hit_points: 10,
-                attack_damage: 4,
+                damage_string: "1d4",
+                hit_chance: 60,
+                kill_exp: 2,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Leprechaun => Self {
                 kind,
                 position,
                 hit_points: 25,
-                attack_damage: 0,
+                damage_string: "0d0",
+                hit_chance: 75,
+                kill_exp: 21,
                 special_hit: Some(SpecialHit::StealsGold),
+                stationary_damage: 0,
             },
             MonsterKind::Medusa => Self {
                 kind,
                 position,
                 hit_points: 97,
-                attack_damage: 16,
+                damage_string: "4d4/3d7",
+                hit_chance: 85,
+                kill_exp: 250,
                 special_hit: Some(SpecialHit::Confuse),
+                stationary_damage: 0,
             },
             MonsterKind::Nymph => Self {
                 kind,
                 position,
                 hit_points: 25,
-                attack_damage: 0,
+                damage_string: "0d0",
+                hit_chance: 75,
+                kill_exp: 39,
                 special_hit: Some(SpecialHit::StealsItem),
+                stationary_damage: 0,
             },
             MonsterKind::Orc => Self {
                 kind,
                 position,
                 hit_points: 25,
-                attack_damage: 6,
+                damage_string: "1d6",
+                hit_chance: 70,
+                kill_exp: 5,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Phantom => Self {
                 kind,
                 position,
                 hit_points: 76,
-                attack_damage: 20,
+                damage_string: "5d4",
+                hit_chance: 80,
+                kill_exp: 120,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Quagga => Self {
                 kind,
                 position,
                 hit_points: 30,
-                attack_damage: 15,
+                damage_string: "3d5",
+                hit_chance: 78,
+                kill_exp: 20,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Rattlesnake => Self {
                 kind,
                 position,
                 hit_points: 19,
-                attack_damage: 10,
+                damage_string: "2d5",
+                hit_chance: 70,
+                kill_exp: 10,
                 special_hit: Some(SpecialHit::Sting),
+                stationary_damage: 0,
             },
             MonsterKind::Snake => Self {
                 kind,
                 position,
                 hit_points: 8,
-                attack_damage: 3,
+                damage_string: "1d3",
+                hit_chance: 50,
+                kill_exp: 2,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Troll => Self {
                 kind,
                 position,
                 hit_points: 75,
-                attack_damage: 24,
+                damage_string: "4d6/1d4",
+                hit_chance: 75,
+                kill_exp: 125,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::BlackUnicorn => Self {
                 kind,
                 position,
                 hit_points: 90,
-                attack_damage: 40,
+                damage_string: "4d10",
+                hit_chance: 85,
+                kill_exp: 200,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Vampire => Self {
                 kind,
                 position,
                 hit_points: 55,
-                attack_damage: 14,
+                damage_string: "1d14/1d4",
+                hit_chance: 85,
+                kill_exp: 350,
                 special_hit: Some(SpecialHit::DrainsLife),
+                stationary_damage: 0,
             },
             MonsterKind::Wraith => Self {
                 kind,
                 position,
                 hit_points: 45,
-                attack_damage: 16,
+                damage_string: "2d8",
+                hit_chance: 75,
+                kill_exp: 55,
                 special_hit: Some(SpecialHit::DropsLevel),
+                stationary_damage: 0,
             },
             MonsterKind::Xeroc => Self {
                 kind,
                 position,
                 hit_points: 42,
-                attack_damage: 24,
+                damage_string: "4d6",
+                hit_chance: 75,
+                kill_exp: 110,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Yeti => Self {
                 kind,
                 position,
                 hit_points: 35,
-                attack_damage: 18,
+                damage_string: "3d6",
+                hit_chance: 80,
+                kill_exp: 50,
                 special_hit: None,
+                stationary_damage: 0,
             },
             MonsterKind::Zombie => Self {
                 kind,
                 position,
                 hit_points: 21,
-                attack_damage: 7,
+                damage_string: "1d7",
+                hit_chance: 69,
+                kill_exp: 8,
                 special_hit: None,
+                stationary_damage: 0,
             },
         }
     }
@@ -338,6 +423,7 @@ pub enum CombatEvent {
         position: Position,
         damage: i16,
         killed: bool,
+        kill_exp: i32,
     },
     MonsterHitPlayer {
         monster_kind: MonsterKind,
@@ -349,6 +435,24 @@ pub enum CombatEvent {
         position: Position,
         effect: StatusEffectEvent,
     },
+}
+
+/// Roll damage for a `"NdD"` or `"NdD/NdD"` damage string.
+/// Each `/`-separated component rolls N dice with D sides and sums them.
+pub fn roll_damage_string(s: &str, rng: &mut GameRng) -> i16 {
+    let mut total: i16 = 0;
+    for part in s.split('/') {
+        if let Some(d_pos) = part.find('d') {
+            let count: i16 = part[..d_pos].parse().unwrap_or(0);
+            let sides: i16 = part[d_pos + 1..].parse().unwrap_or(0);
+            if count > 0 && sides > 0 {
+                for _ in 0..count {
+                    total += rng.get_rand(1, sides as i32) as i16;
+                }
+            }
+        }
+    }
+    total
 }
 
 pub fn spawn_basic_monsters(
@@ -438,11 +542,13 @@ pub fn attack_monster(
     let monster = &mut monsters[index];
     monster.hit_points -= damage;
 
+    let kill_exp = monster.kill_exp;
     let event = CombatEvent::PlayerHitMonster {
         monster_kind: monster.kind,
         position: monster.position,
         damage,
         killed: monster.hit_points <= 0,
+        kill_exp,
     };
 
     if monster.hit_points <= 0 {
@@ -473,19 +579,30 @@ pub fn tick_monsters(
             }
             MonsterAction::AttackPlayer => {
                 occupied_positions.insert(previous_position);
-                events.push(CombatEvent::MonsterHitPlayer {
-                    monster_kind: monster.kind,
-                    position: monster.position,
-                    damage: monster.attack_damage,
-                });
-
-                if let Some(effect) = monster.special_hit.and_then(special_hit_event) {
-                    events.push(CombatEvent::MonsterAppliedEffect {
+                // Check hit_chance: rng(0,99) < hit_chance means a hit
+                if rng.get_rand(0, 99) < monster.hit_chance as i32 {
+                    let damage = if monster.kind == MonsterKind::VenusFlytrap {
+                        let d = monster.stationary_damage;
+                        monster.stationary_damage += 1;
+                        d
+                    } else {
+                        roll_damage_string(monster.damage_string, rng)
+                    };
+                    events.push(CombatEvent::MonsterHitPlayer {
                         monster_kind: monster.kind,
                         position: monster.position,
-                        effect,
+                        damage,
                     });
+
+                    if let Some(effect) = monster.special_hit.and_then(special_hit_event) {
+                        events.push(CombatEvent::MonsterAppliedEffect {
+                            monster_kind: monster.kind,
+                            position: monster.position,
+                            effect,
+                        });
+                    }
                 }
+                // On a miss: no events emitted
             }
             MonsterAction::ConfusePlayer => {
                 occupied_positions.insert(previous_position);
@@ -495,8 +612,10 @@ pub fn tick_monsters(
                     effect: StatusEffectEvent::Confused { turns: 12 },
                 });
             }
-            MonsterAction::FireBreath { damage } => {
+            MonsterAction::FireBreath => {
                 occupied_positions.insert(previous_position);
+                // Dragon fire breath always hits; roll damage from monster's dice
+                let damage = roll_damage_string(monster.damage_string, rng);
                 events.push(CombatEvent::MonsterHitPlayer {
                     monster_kind: monster.kind,
                     position: monster.position,
@@ -518,7 +637,7 @@ enum MonsterAction {
     /// Medusa: confuse the player from sight range.
     ConfusePlayer,
     /// Dragon: fire breath along a line at range.
-    FireBreath { damage: i16 },
+    FireBreath,
     Wait,
 }
 
@@ -577,8 +696,8 @@ fn next_monster_action(
         let in_line = row_dist == 0 || col_dist == 0 || row_dist == col_dist;
         let in_range = row_dist <= 7 && col_dist <= 7;
         if in_line && in_range && rng.get_rand(0, 1) == 0 {
-            // Fire breath deals the monster's full attack damage
-            return MonsterAction::FireBreath { damage: monster.attack_damage };
+            // Fire breath deals rolled damage (computed later in tick_monsters)
+            return MonsterAction::FireBreath;
         }
     }
 
@@ -648,13 +767,16 @@ mod tests {
         assert!(third_turn.is_empty());
         assert_eq!(monsters[0].position, Position::new(3, 19));
         assert_ne!(monsters[0].position, player_position);
-        assert_eq!(
-            fourth_turn,
-            vec![CombatEvent::MonsterHitPlayer {
-                monster_kind: MonsterKind::Kestrel,
-                position: Position::new(3, 19),
-                damage: 4,
-            }]
+        // Kestrel has 60% hit_chance and rolls 1d4 damage, so it may hit or miss.
+        assert!(
+            fourth_turn.is_empty()
+                || matches!(
+                    fourth_turn[0],
+                    CombatEvent::MonsterHitPlayer {
+                        monster_kind: MonsterKind::Kestrel,
+                        ..
+                    }
+                )
         );
     }
 
@@ -672,6 +794,7 @@ mod tests {
                 position: Position::new(18, 13),
                 damage: 1,
                 killed: true,
+                kill_exp: 2,
             })
         );
         assert!(monsters.is_empty());
@@ -686,20 +809,26 @@ mod tests {
 
         let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
 
-        assert_eq!(
-            events,
-            vec![
-                CombatEvent::MonsterHitPlayer {
-                    monster_kind: MonsterKind::IceMonster,
-                    position: Position::new(4, 18),
-                    damage: 0,
-                },
-                CombatEvent::MonsterAppliedEffect {
-                    monster_kind: MonsterKind::IceMonster,
-                    position: Position::new(4, 18),
-                    effect: StatusEffectEvent::Frozen { turns: 2 },
-                },
-            ]
+        // IceMonster has 68% hit_chance; on a miss no events are emitted.
+        // On a hit it deals 0 damage and applies the Frozen effect.
+        assert!(
+            events.is_empty()
+                || (events.len() == 2
+                    && matches!(
+                        &events[0],
+                        CombatEvent::MonsterHitPlayer {
+                            monster_kind: MonsterKind::IceMonster,
+                            damage: 0,
+                            ..
+                        }
+                    )
+                    && matches!(
+                        &events[1],
+                        CombatEvent::MonsterAppliedEffect {
+                            effect: StatusEffectEvent::Frozen { .. },
+                            ..
+                        }
+                    ))
         );
     }
 

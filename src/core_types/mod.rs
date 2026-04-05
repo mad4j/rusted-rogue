@@ -10,6 +10,8 @@ pub const ROW2: i16 = 15;
 pub const COL1: i16 = 26;
 pub const COL2: i16 = 52;
 
+pub const INIT_HP: i16 = 12;
+pub const MAX_HP: i16 = 800;
 pub const INIT_STRENGTH: i16 = 16;
 pub const INIT_FOOD: i32 = 1250;
 pub const FOOD_HUNGRY: i32 = 300;

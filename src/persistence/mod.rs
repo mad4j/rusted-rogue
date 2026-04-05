@@ -134,7 +134,8 @@ struct MonsterSnapshot {
     kind: String,
     position: PositionSnapshot,
     hit_points: i16,
-    attack_damage: i16,
+    #[serde(default)]
+    stationary_damage: i16,
     special_hit: Option<String>,
 }
 
@@ -158,6 +159,8 @@ enum CombatEventSnapshot {
         position: PositionSnapshot,
         damage: i16,
         killed: bool,
+        #[serde(default)]
+        kill_exp: i32,
     },
     MonsterHitPlayer {
         monster_kind: String,
@@ -650,7 +653,7 @@ impl MonsterSnapshot {
             kind: monster_kind_to_string(monster.kind).to_string(),
             position: PositionSnapshot::from_position(monster.position),
             hit_points: monster.hit_points,
-            attack_damage: monster.attack_damage,
+            stationary_damage: monster.stationary_damage,
             special_hit: monster
                 .special_hit
                 .map(|hit| special_hit_to_string(hit).to_string()),
@@ -658,17 +661,16 @@ impl MonsterSnapshot {
     }
 
     fn into_monster(self) -> io::Result<Monster> {
-        Ok(Monster {
-            kind: monster_kind_from_string(&self.kind)?,
-            position: self.position.into_position(),
-            hit_points: self.hit_points,
-            attack_damage: self.attack_damage,
-            special_hit: self
-                .special_hit
-                .as_deref()
-                .map(special_hit_from_string)
-                .transpose()?,
-        })
+        let kind = monster_kind_from_string(&self.kind)?;
+        // Reconstruct from Monster::new to get up-to-date damage_string / hit_chance / kill_exp,
+        // then restore the mutable fields that are actually persisted.
+        let mut monster = Monster::new(kind, self.position.into_position());
+        monster.hit_points = self.hit_points;
+        monster.stationary_damage = self.stationary_damage;
+        if let Some(sh) = self.special_hit.as_deref().map(special_hit_from_string).transpose()? {
+            monster.special_hit = Some(sh);
+        }
+        Ok(monster)
     }
 }
 
@@ -680,11 +682,13 @@ impl CombatEventSnapshot {
                 position,
                 damage,
                 killed,
+                kill_exp,
             } => Self::PlayerHitMonster {
                 monster_kind: monster_kind_to_string(*monster_kind).to_string(),
                 position: PositionSnapshot::from_position(*position),
                 damage: *damage,
                 killed: *killed,
+                kill_exp: *kill_exp,
             },
             CombatEvent::MonsterHitPlayer {
                 monster_kind,
@@ -734,11 +738,13 @@ impl CombatEventSnapshot {
                 position,
                 damage,
                 killed,
+                kill_exp,
             } => CombatEvent::PlayerHitMonster {
                 monster_kind: monster_kind_from_string(&monster_kind)?,
                 position: position.into_position(),
                 damage,
                 killed,
+                kill_exp,
             },
             Self::MonsterHitPlayer {
                 monster_kind,

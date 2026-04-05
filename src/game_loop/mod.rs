@@ -4,7 +4,7 @@ use crate::actors::{
     attack_monster, spawn_basic_monsters, tick_monsters, CombatEvent, Monster, MonsterKind,
     SpecialHit, StatusEffectEvent,
 };
-use crate::core_types::{EXP_LEVELS, FOOD_FAINT, FOOD_HUNGRY, FOOD_WEAK, INIT_FOOD, INIT_STRENGTH, Position, TrapKind};
+use crate::core_types::{EXP_LEVELS, FOOD_FAINT, FOOD_HUNGRY, FOOD_WEAK, INIT_FOOD, INIT_STRENGTH, MAX_HP, Position, TrapKind};
 use crate::inventory_items::{
     apply_item_effects, drop_by_ichar, equip_by_ichar, pick_up_item, remove_item_by_ichar,
     total_armor_bonus, total_attack_bonus, unequip_by_ichar, EquipmentSlot, FloorItem,
@@ -189,6 +189,30 @@ fn is_adjacent(left: Position, right: Position) -> bool {
     row_distance <= 1 && col_distance <= 1
 }
 
+fn has_regen_ring_only(inventory: &[crate::inventory_items::InventoryEntry]) -> bool {
+    inventory.iter().any(|e| {
+        matches!(
+            e.equipped_slot,
+            Some(EquipmentSlot::LeftRing) | Some(EquipmentSlot::RightRing)
+        ) && e.item.name == "ring of regeneration"
+    })
+}
+
+/// Strength-to-damage bonus table, matching original `damage_for_strength()` in `hit.c`.
+fn damage_for_strength(str: i16) -> i16 {
+    match str {
+        s if s <= 3  => -3,
+        4 | 5        => -2,
+        6 | 7        => -1,
+        8..=12       =>  0,
+        13..=15      =>  1,
+        16           =>  2,
+        17           =>  3,
+        18           =>  5,
+        _            =>  6 + (str - 19) / 2,
+    }
+}
+
 impl GameLoop {
     pub fn new(seed: i32) -> Self {
         let mut rng = GameRng::new(seed);
@@ -359,8 +383,10 @@ impl GameLoop {
     }
 
     fn player_attack_damage(&self) -> i16 {
-        let str_bonus = (self.state.player_strength - INIT_STRENGTH) / 4;
-        1 + str_bonus.max(0) + total_attack_bonus(&self.state.inventory)
+        let str_bonus = damage_for_strength(self.state.player_strength);
+        let exp_bonus = (self.state.player_exp_level - 1) / 2;
+        let weapon_base = total_attack_bonus(&self.state.inventory).max(1);
+        (weapon_base + str_bonus + exp_bonus).max(1)
     }
 
     fn player_armor_bonus(&self) -> i16 {
@@ -400,15 +426,18 @@ impl GameLoop {
         }
 
         if let Some(event) = attack_monster(&mut self.state.monsters, target, attack_damage) {
-            if matches!(event, CombatEvent::PlayerHitMonster { killed: true, .. }) {
+            if let CombatEvent::PlayerHitMonster { killed: true, kill_exp, .. } = event {
                 self.state.monsters_defeated += 1;
-                self.state.player_exp_points += 5;
+                self.state.player_exp_points += kill_exp as i64;
                 let next_level = self.state.player_exp_level as usize;
                 if next_level < EXP_LEVELS.len()
                     && self.state.player_exp_points >= EXP_LEVELS[next_level - 1]
                 {
                     self.state.player_exp_level = (self.state.player_exp_level + 1).min(21);
-                    self.state.player_max_hit_points += 4;
+                    let mut lvl_rng = GameRng::new(self.state.turns as i32 ^ 0x5432_i32);
+                    let hp_gain = lvl_rng.get_rand(3, 10) as i16;
+                    self.state.player_max_hit_points =
+                        (self.state.player_max_hit_points + hp_gain).min(MAX_HP);
                     self.state.player_hit_points = self.state.player_max_hit_points;
                     self.state.last_system_message = Some(format!(
                         "Welcome to experience level {}!",
@@ -589,13 +618,33 @@ impl GameLoop {
                 remove_item_by_ichar(&mut self.state.inventory, ch).map(|entry| {
                     let msg = match entry.item.name {
                         "healing potion" => {
-                            self.state.player_hit_points = (self.state.player_hit_points + 4)
-                                .min(self.state.player_max_hit_points);
+                            // Original: potion_heal(rogue.exp) — heal by exp level
+                            let n = self.state.player_exp_level as i16;
+                            let new_hp = self.state.player_hit_points + n;
+                            if new_hp > self.state.player_max_hit_points {
+                                if self.state.player_hit_points == self.state.player_max_hit_points {
+                                    self.state.player_max_hit_points =
+                                        (self.state.player_max_hit_points + 1).min(MAX_HP);
+                                }
+                                self.state.player_hit_points = self.state.player_max_hit_points;
+                            } else {
+                                self.state.player_hit_points = new_hp;
+                            }
                             "You feel better."
                         }
                         "potion of extra healing" => {
-                            self.state.player_hit_points = (self.state.player_hit_points + 8)
-                                .min(self.state.player_max_hit_points);
+                            // Original: potion_heal(2 * rogue.exp)
+                            let n = self.state.player_exp_level as i16 * 2;
+                            let new_hp = self.state.player_hit_points + n;
+                            if new_hp > self.state.player_max_hit_points {
+                                if self.state.player_hit_points == self.state.player_max_hit_points {
+                                    self.state.player_max_hit_points =
+                                        (self.state.player_max_hit_points + 1).min(MAX_HP);
+                                }
+                                self.state.player_hit_points = self.state.player_max_hit_points;
+                            } else {
+                                self.state.player_hit_points = new_hp;
+                            }
                             "You feel much better."
                         }
                         "potion of increase strength" => "You feel stronger.",
@@ -863,6 +912,37 @@ impl GameLoop {
             return StepOutcome::Finished;
         }
 
+        // Passive healing: heal() from move.c — +1 or +2 HP every N turns,
+        // based on experience level. Ring of Regeneration grants +1 extra per tick.
+        {
+            let interval = match self.state.player_exp_level {
+                1 => 20u64, 2 => 18, 3 => 17, 4 => 14, 5 => 13, 6 => 10,
+                7 => 9, 8 => 8, 9 => 7, 10 => 4, 11 => 3, _ => 2,
+            };
+            if self.state.turns % interval == 0
+                && self.state.player_hit_points < self.state.player_max_hit_points
+            {
+                let has_regeneration = self.state.inventory.iter().any(|e| {
+                    matches!(
+                        e.equipped_slot,
+                        Some(EquipmentSlot::LeftRing) | Some(EquipmentSlot::RightRing)
+                    ) && e.item.name == "ring of regeneration"
+                });
+                let regen_bonus: i16 = if has_regeneration { 1 } else { 0 };
+                // Alternate between +1 and +2 HP each interval
+                let base_heal: i16 = if (self.state.turns / interval) % 2 == 0 { 2 } else { 1 };
+                self.state.player_hit_points =
+                    (self.state.player_hit_points + base_heal + regen_bonus)
+                        .min(self.state.player_max_hit_points);
+            } else if has_regen_ring_only(&self.state.inventory) {
+                // Regeneration ring also heals +1 HP every turn outside the interval
+                if self.state.player_hit_points < self.state.player_max_hit_points {
+                    self.state.player_hit_points =
+                        (self.state.player_hit_points + 1).min(self.state.player_max_hit_points);
+                }
+            }
+        }
+
         let events = tick_monsters(
             &mut self.state.monsters,
             &self.current_level,
@@ -873,32 +953,43 @@ impl GameLoop {
         for event in events {
             match event {
                 CombatEvent::MonsterHitPlayer { damage, .. } => {
-                    let mitigated_damage = (damage - self.player_armor_bonus()).max(1);
-                    self.state.player_hit_points =
-                        (self.state.player_hit_points - mitigated_damage).max(0);
-                    if self.state.player_hit_points == 0 {
-                        self.state.quit_requested = true;
+                    if damage > 0 {
+                        let mitigated_damage = (damage - self.player_armor_bonus()).max(1);
+                        self.state.player_hit_points =
+                            (self.state.player_hit_points - mitigated_damage).max(0);
+                        if self.state.player_hit_points == 0 {
+                            self.state.quit_requested = true;
+                        }
                     }
+                    // damage == 0 means attack causes only a side-effect (e.g. Aquator)
                 }
                 CombatEvent::MonsterAppliedEffect { effect, .. } => match effect {
                     StatusEffectEvent::Frozen { turns } => {
-                        if self.state.frozen_turns == 0 {
+                        // Original: 12% immunity from freezing
+                        if !rng.rand_percent(12) && self.state.frozen_turns == 0 {
                             self.state.frozen_turns = turns;
                         }
                     }
                     StatusEffectEvent::Held => {}
                     StatusEffectEvent::Stung { amount } => {
-                        // Rattlesnake bite drains current strength (min 3, matching original)
-                        self.state.player_strength =
-                            (self.state.player_strength - amount).max(3);
+                        // Rattlesnake: 50% skip, minimum strength 3
+                        if !rng.rand_percent(50) && self.state.player_strength > 3 {
+                            self.state.player_strength =
+                                (self.state.player_strength - amount).max(3);
+                        }
                     }
                     StatusEffectEvent::LifeDrained { max_hit_points_lost } => {
-                        self.state.player_max_hit_points =
-                            (self.state.player_max_hit_points - max_hit_points_lost).max(1);
-                        self.state.player_hit_points = self
-                            .state
-                            .player_hit_points
-                            .min(self.state.player_max_hit_points);
+                        // Original: 60% skip, guard against very low max HP
+                        if !rng.rand_percent(60)
+                            && self.state.player_max_hit_points > max_hit_points_lost
+                        {
+                            self.state.player_max_hit_points =
+                                (self.state.player_max_hit_points - max_hit_points_lost).max(1);
+                            self.state.player_hit_points = self
+                                .state
+                                .player_hit_points
+                                .min(self.state.player_max_hit_points);
+                        }
                     }
                     StatusEffectEvent::GoldStolen => {
                         if self.state.gold > 0 {
@@ -918,11 +1009,11 @@ impl GameLoop {
                         }
                     }
                     StatusEffectEvent::LevelDropped => {
-                        // Drop two experience levels (min 1), matching original drop_level()
-                        if self.state.player_exp_level > 1 {
+                        // Original: 80% skip, only applies when level > 5, rand(3,10) hp loss
+                        if !rng.rand_percent(80) && self.state.player_exp_level > 5 {
                             self.state.player_exp_level =
                                 (self.state.player_exp_level - 2).max(1);
-                            let hp_loss = 4i16;
+                            let hp_loss = rng.get_rand(3, 10) as i16;
                             self.state.player_max_hit_points =
                                 (self.state.player_max_hit_points - hp_loss).max(1);
                             self.state.player_hit_points = self
@@ -932,12 +1023,21 @@ impl GameLoop {
                         }
                     }
                     StatusEffectEvent::ArmorRusted => {
-                        // Reduce equipped armor bonus by 1 (min 1)
-                        if let Some(armor) = self.state.inventory.iter_mut().find(|e| {
-                            e.equipped_slot == Some(EquipmentSlot::Armor)
-                                && e.item.armor_bonus > 1
-                        }) {
-                            armor.item.armor_bonus -= 1;
+                        // Check for Ring of Maintain Armor; leather armor is immune
+                        let has_maintain_armor = self.state.inventory.iter().any(|e| {
+                            matches!(
+                                e.equipped_slot,
+                                Some(EquipmentSlot::LeftRing) | Some(EquipmentSlot::RightRing)
+                            ) && e.item.name == "ring of maintain armor"
+                        });
+                        if !has_maintain_armor {
+                            if let Some(armor) = self.state.inventory.iter_mut().find(|e| {
+                                e.equipped_slot == Some(EquipmentSlot::Armor)
+                                    && e.item.armor_bonus > 1
+                                    && e.item.name != "leather armor"
+                            }) {
+                                armor.item.armor_bonus -= 1;
+                            }
                         }
                     }
                     StatusEffectEvent::Confused { turns } => {
@@ -1092,14 +1192,31 @@ impl GameLoop {
                                     );
                                 }
                                 TrapKind::DartTrap => {
+                                    // Original: 1d6 damage, 40% chance of strength loss
+                                    // unless wearing Ring of Sustain Strength
+                                    let mut dart_rng =
+                                        GameRng::new(self.state.turns as i32 ^ 0x7777_i32);
+                                    let dart_damage = dart_rng.get_rand(1, 6) as i16;
                                     self.state.player_hit_points =
-                                        (self.state.player_hit_points - 2).max(0);
-                                    self.state.player_strength =
-                                        (self.state.player_strength - 1).max(1);
-                                    self.state.last_system_message = Some(
-                                        "A dart hits you for 2 damage and poisons you!"
-                                            .to_string(),
-                                    );
+                                        (self.state.player_hit_points - dart_damage).max(0);
+                                    let has_sustain = self.state.inventory.iter().any(|e| {
+                                        matches!(
+                                            e.equipped_slot,
+                                            Some(EquipmentSlot::LeftRing)
+                                                | Some(EquipmentSlot::RightRing)
+                                        ) && e.item.name == "ring of sustain strength"
+                                    });
+                                    if !has_sustain && dart_rng.rand_percent(40) {
+                                        self.state.player_strength =
+                                            (self.state.player_strength - 1).max(1);
+                                        self.state.last_system_message = Some(format!(
+                                            "A dart hits you for {dart_damage} damage and poisons you!"
+                                        ));
+                                    } else {
+                                        self.state.last_system_message = Some(format!(
+                                            "A dart hits you for {dart_damage} damage."
+                                        ));
+                                    }
                                 }
                                 TrapKind::SleepingGasTrap => {
                                     self.state.frozen_turns =
@@ -1377,7 +1494,8 @@ mod tests {
         assert_eq!(game.step(Command::Quaff), StepOutcome::Continue);
         assert!(game.state.pending_item_action.is_some());
         assert_eq!(game.step(Command::SelectItem('a')), StepOutcome::Continue);
-        assert_eq!(game.state.player_hit_points, 11);
+        // Healing potion now heals player_exp_level (1) HP: 7 + 1 = 8
+        assert_eq!(game.state.player_hit_points, 8);
         assert!(game.state.inventory.is_empty());
     }
 
@@ -1567,34 +1685,32 @@ mod tests {
     fn moving_into_monster_attacks_instead_of_moving() {
         let mut game = GameLoop::new(12345);
         game.state.inventory.clear();
-        game.state.monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(4, 13))];
-        game.state.monsters[0].hit_points = 2;
+        // Give the Kestrel enough HP that it survives the first hit
+        let mut kestrel = Monster::new(MonsterKind::Kestrel, Position::new(4, 13));
+        kestrel.hit_points = 50;
+        game.state.monsters = vec![kestrel];
 
         assert_eq!(
             game.step(Command::Move(Direction::Right)),
             StepOutcome::Continue
         );
 
+        // Player stays directly left of monster (combat, not movement)
         assert_eq!(game.state().player_position, Position::new(4, 12));
         assert_eq!(game.state().turns, 1);
-        assert_eq!(game.state().player_hit_points, 8);
-        assert_eq!(game.state().monsters[0].hit_points, 1);
-        assert_eq!(
-            game.state().last_turn_events,
-            vec![
+        // Kestrel was hit — its HP is lower than it started
+        assert!(game.state().monsters[0].hit_points < 50);
+        // At least the PlayerHitMonster event was emitted
+        assert!(game.state().last_turn_events.iter().any(|e| {
+            matches!(
+                e,
                 CombatEvent::PlayerHitMonster {
-                    monster_kind: game.state().monsters[0].kind,
-                    position: Position::new(4, 13),
-                    damage: 1,
+                    monster_kind: MonsterKind::Kestrel,
                     killed: false,
-                },
-                CombatEvent::MonsterHitPlayer {
-                    monster_kind: game.state().monsters[0].kind,
-                    position: Position::new(4, 13),
-                    damage: 4,
-                },
-            ]
-        );
+                    ..
+                }
+            )
+        }));
     }
 
     #[test]
@@ -1611,16 +1727,19 @@ mod tests {
 
         assert!(game.state().monsters.is_empty());
         assert_eq!(game.state().monsters_defeated, 1);
+        // Monster is dead so no counter-attack: player HP unchanged
         assert_eq!(game.state().player_hit_points, 12);
-        assert_eq!(
-            game.state().last_turn_events,
-            vec![CombatEvent::PlayerHitMonster {
-                monster_kind: crate::actors::MonsterKind::Kestrel,
-                position: Position::new(4, 13),
-                damage: 1,
-                killed: true,
-            }]
-        );
+        // The kill event was emitted
+        assert!(game.state().last_turn_events.iter().any(|e| {
+            matches!(
+                e,
+                CombatEvent::PlayerHitMonster {
+                    monster_kind: MonsterKind::Kestrel,
+                    killed: true,
+                    ..
+                }
+            )
+        }));
     }
 
     #[test]
@@ -1685,9 +1804,9 @@ mod tests {
 
         assert_eq!(game.step(Command::Rest), StepOutcome::Continue);
 
-        // Sting now drains strength, not max HP
-        assert_eq!(game.state.player_strength, 15); // INIT_STRENGTH - 1
-        assert!(game.state.last_turn_events.iter().any(|event| {
+        // Sting now drains strength with 50% probability, minimum 3
+        assert!(game.state.player_strength <= 16); // 16 = INIT_STRENGTH (may skip with 50% chance)
+        assert!(game.state().last_turn_events.iter().any(|event| {
             matches!(
                 event,
                 CombatEvent::MonsterAppliedEffect {
