@@ -129,7 +129,21 @@ impl RogueApp {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        iced::keyboard::on_key_press(|key, modifiers| Some(Message::KeyPressed(key, modifiers)))
+        iced::event::listen_with(|event, status, _window| {
+            if status == iced::event::Status::Captured {
+                return None;
+            }
+            if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                modified_key,
+                modifiers,
+                ..
+            }) = event
+            {
+                Some(Message::KeyPressed(modified_key, modifiers))
+            } else {
+                None
+            }
+        })
     }
 }
 
