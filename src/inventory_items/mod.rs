@@ -425,6 +425,8 @@ pub struct InventoryEntry {
     pub equipped_slot: Option<EquipmentSlot>,
     /// Pack letter assigned on pick-up, mirroring the original `ichar` field.
     pub ichar: char,
+    /// Stack size (1 for most items; >1 for stackable items like arrows).
+    pub quantity: u16,
 }
 
 /// Returns the next available pack letter ('a'–'z') not already used by an
@@ -582,6 +584,7 @@ pub fn pick_up_item(
         item: floor_item.item.clone(),
         equipped_slot: None,
         ichar,
+        quantity: 1,
     });
     *next_item_id += 1;
 
@@ -643,18 +646,21 @@ mod tests {
                 item: InventoryItem::dagger(),
                 equipped_slot: None,
                 ichar: 'a',
+                quantity: 1,
             },
             InventoryEntry {
                 id: 2,
                 item: InventoryItem::leather_armor(),
                 equipped_slot: None,
                 ichar: 'b',
+                quantity: 1,
             },
             InventoryEntry {
                 id: 3,
                 item: InventoryItem::accuracy_ring(),
                 equipped_slot: None,
                 ichar: 'c',
+                quantity: 1,
             },
         ];
 
@@ -675,6 +681,7 @@ mod tests {
             item: InventoryItem::dagger(),
             equipped_slot: Some(EquipmentSlot::Weapon),
             ichar: 'a',
+            quantity: 1,
         }];
         let mut floor_items = Vec::new();
 
@@ -705,12 +712,14 @@ mod tests {
                 item: InventoryItem::protection_ring(),
                 equipped_slot: Some(EquipmentSlot::LeftRing),
                 ichar: 'a',
+                quantity: 1,
             },
             InventoryEntry {
                 id: 2,
                 item: InventoryItem::accuracy_ring(),
                 equipped_slot: Some(EquipmentSlot::RightRing),
                 ichar: 'b',
+                quantity: 1,
             },
         ];
 

@@ -174,7 +174,12 @@ struct InventoryEntrySnapshot {
     /// Pack letter ('a'–'z').  None for saves written before this field was added.
     #[serde(default)]
     ichar: Option<char>,
+    /// Stack size.  Defaults to 1 for saves written before this field was added.
+    #[serde(default = "quantity_one")]
+    quantity: u16,
 }
+
+fn quantity_one() -> u16 { 1 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FloorItemSnapshot {
@@ -771,6 +776,7 @@ impl InventoryEntrySnapshot {
                 .equipped_slot
                 .map(|slot| equipment_slot_to_string(slot).to_string()),
             ichar: Some(entry.ichar),
+            quantity: entry.quantity,
         }
     }
 
@@ -792,6 +798,7 @@ impl InventoryEntrySnapshot {
                 .transpose()?,
             // '\0' signals "needs reassignment" done after all entries are loaded.
             ichar: self.ichar.unwrap_or('\0'),
+            quantity: self.quantity,
         })
     }
 }

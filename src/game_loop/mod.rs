@@ -7,8 +7,8 @@ use crate::actors::{
 use crate::core_types::{EXP_LEVELS, INIT_FOOD, INIT_STRENGTH, Position, TrapKind};
 use crate::inventory_items::{
     apply_item_effects, drop_by_ichar, equip_by_ichar, pick_up_item, remove_item_by_ichar,
-    total_armor_bonus, total_attack_bonus, unequip_by_ichar, FloorItem, InventoryEntry,
-    InventoryEvent, InventoryItem, ItemCategory,
+    total_armor_bonus, total_attack_bonus, unequip_by_ichar, EquipmentSlot, FloorItem,
+    InventoryEntry, InventoryEvent, InventoryItem, ItemCategory,
 };
 use crate::persistence;
 use crate::rng::GameRng;
@@ -194,6 +194,7 @@ impl GameLoop {
         let current_level = generate_level_with_depth(&mut rng, 1, party_counter);
         let player_position = current_level.spawn_position();
         let monsters = spawn_basic_monsters(&current_level, &mut rng, player_position, 1);
+        let arrows_count = rng.get_rand(25, 35) as u16;
 
         let mut game = Self {
             state: GameState {
@@ -216,21 +217,49 @@ impl GameLoop {
                 monsters_defeated: 0,
                 monsters,
                 last_turn_events: Vec::new(),
-                inventory: Vec::new(),
-                floor_items: vec![
-                    FloorItem {
-                        item: InventoryItem::healing_potion(),
-                        position: Position::new(player_position.row, player_position.col + 1),
+                inventory: vec![
+                    // Initial equipment matching original Rogue (see original/rogue-libc5-ncurses/rogue/init.c player_init())
+                    InventoryEntry {
+                        id: 1,
+                        item: InventoryItem::food_ration(),
+                        equipped_slot: None,
+                        ichar: 'a',
+                        quantity: 1,
                     },
-                    FloorItem {
-                        item: InventoryItem::magic_missile_wand(),
-                        position: Position::new(player_position.row + 1, player_position.col),
+                    InventoryEntry {
+                        id: 2,
+                        item: InventoryItem::ring_mail(),
+                        equipped_slot: Some(EquipmentSlot::Armor),
+                        ichar: 'b',
+                        quantity: 1,
+                    },
+                    InventoryEntry {
+                        id: 3,
+                        item: InventoryItem::mace(),
+                        equipped_slot: Some(EquipmentSlot::Weapon),
+                        ichar: 'c',
+                        quantity: 1,
+                    },
+                    InventoryEntry {
+                        id: 4,
+                        item: InventoryItem::bow(),
+                        equipped_slot: None,
+                        ichar: 'd',
+                        quantity: 1,
+                    },
+                    InventoryEntry {
+                        id: 5,
+                        item: InventoryItem::arrow(),
+                        equipped_slot: None,
+                        ichar: 'e',
+                        quantity: arrows_count,
                     },
                 ],
+                floor_items: Vec::new(),
                 trap_positions: vec![Position::new(player_position.row - 1, player_position.col)],
                 trap_types: vec![TrapKind::DartTrap],
                 known_traps: Vec::new(),
-                next_item_id: 1,
+                next_item_id: 6,
                 last_inventory_events: Vec::new(),
                 last_move_blocked: false,
                 last_system_message: None,
@@ -1176,7 +1205,7 @@ mod tests {
         assert_eq!(game.state().player_hit_points, 12);
         assert!(!game.current_level().rooms.is_empty());
         assert_eq!(game.state().player_position, Position::new(6, 9));
-        assert!(game.state().inventory.is_empty());
+        assert_eq!(game.state().inventory.len(), 5);
         assert_eq!(game.state().monsters.len(), 1);
         assert_ne!(
             game.state().monsters[0].position,
@@ -1214,6 +1243,7 @@ mod tests {
     #[test]
     fn quaff_consumes_potion_and_heals() {
         let mut game = GameLoop::new(12345);
+        game.state.inventory.clear();
         game.state.player_hit_points = 7;
         game.state
             .inventory
@@ -1222,6 +1252,7 @@ mod tests {
                 item: InventoryItem::healing_potion(),
                 equipped_slot: None,
                 ichar: 'a',
+                quantity: 1,
             });
 
         // First Quaff sets pending action; SelectItem('a') executes it.
@@ -1293,6 +1324,7 @@ mod tests {
     #[test]
     fn pickup_wield_and_drop_flow_is_stable() {
         let mut game = GameLoop::new(12345);
+        game.state.inventory.clear();
         game.state.floor_items.clear();
         game.state.floor_items.push(FloorItem {
             item: InventoryItem::dagger(),
@@ -1329,6 +1361,7 @@ mod tests {
     #[test]
     fn equipped_items_modify_attack_and_armor() {
         let mut game = GameLoop::new(12345);
+        game.state.inventory.clear();
         game.state
             .inventory
             .push(crate::inventory_items::InventoryEntry {
@@ -1336,6 +1369,7 @@ mod tests {
                 item: InventoryItem::dagger(),
                 equipped_slot: Some(EquipmentSlot::Weapon),
                 ichar: 'a',
+                quantity: 1,
             });
         game.state
             .inventory
@@ -1344,6 +1378,7 @@ mod tests {
                 item: InventoryItem::leather_armor(),
                 equipped_slot: Some(EquipmentSlot::Armor),
                 ichar: 'b',
+                quantity: 1,
             });
 
         game.state.monsters[0].position = Position::new(6, 10);
@@ -1362,6 +1397,7 @@ mod tests {
     #[test]
     fn wear_and_remove_ring_commands_toggle_equipment() {
         let mut game = GameLoop::new(12345);
+        game.state.inventory.clear();
         game.state
             .inventory
             .push(crate::inventory_items::InventoryEntry {
@@ -1369,6 +1405,7 @@ mod tests {
                 item: InventoryItem::leather_armor(),
                 equipped_slot: None,
                 ichar: 'a',
+                quantity: 1,
             });
         game.state
             .inventory
@@ -1377,6 +1414,7 @@ mod tests {
                 item: InventoryItem::protection_ring(),
                 equipped_slot: None,
                 ichar: 'b',
+                quantity: 1,
             });
 
         assert_eq!(game.step(Command::WearArmor), StepOutcome::Continue);
@@ -1409,6 +1447,7 @@ mod tests {
     #[test]
     fn moving_into_monster_attacks_instead_of_moving() {
         let mut game = GameLoop::new(12345);
+        game.state.inventory.clear();
         game.state.monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(6, 10))];
         game.state.monsters[0].hit_points = 2;
 
@@ -1442,6 +1481,7 @@ mod tests {
     #[test]
     fn killing_monster_removes_it_before_counter_attack() {
         let mut game = GameLoop::new(12345);
+        game.state.inventory.clear();
         game.state.monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(6, 10))];
         game.state.monsters[0].hit_points = 1;
 

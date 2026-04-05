@@ -156,7 +156,11 @@ fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop, browsing
                 Some(EquipmentSlot::RightRing) => " (on right finger)",
                 None => "",
             };
-            let name = &entry.item.name;
+            let name = if entry.quantity > 1 {
+                format!("{} {}", entry.quantity, entry.item.name)
+            } else {
+                entry.item.name.to_string()
+            };
             let line = format!(" {}) {}{}", entry.ichar, name, slot_label);
             // Truncate to panel width.
             let line: String = line.chars().take(PANEL_WIDTH - 1).collect();
