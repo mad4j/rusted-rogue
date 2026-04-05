@@ -1,13 +1,13 @@
 use iced::widget::canvas;
 use iced::{Color, Point};
 
-use crate::core_types::{DCOLS, DROWS};
+use crate::core_types::DROWS;
 
 use super::renderer::{cell_color, cell_text};
 
 // Panel constants – mirror the inventory overlay
-const PANEL_COL: usize = 42;
-const PANEL_WIDTH: usize = DCOLS - PANEL_COL; // = 38, extends to the right edge of the game area
+const PANEL_COL: usize = 52;
+const PANEL_WIDTH: usize = 28; // cols 52-79; flush to the right edge
 
 // ---------------------------------------------------------------------------
 // Help content
@@ -103,7 +103,6 @@ pub(super) fn render_help_overlay(frame: &mut canvas::Frame, page: usize) {
     const CYAN: Color = Color { r: 0.39, g: 0.86, b: 1.0, a: 1.0 };
     const YELLOW: Color = Color { r: 1.0, g: 0.86, b: 0.31, a: 1.0 };
     const WHITE: Color = Color { r: 0.86, g: 0.86, b: 0.86, a: 1.0 };
-    const DIM: Color = Color { r: 0.43, g: 0.43, b: 0.43, a: 1.0 };
 
     let total = HELP_PAGES.len();
 
@@ -118,16 +117,18 @@ pub(super) fn render_help_overlay(frame: &mut canvas::Frame, page: usize) {
         Color::from_rgba(0.04, 0.04, 0.14, 0.95),
     );
 
-    // Header
+    // Header – title on the left, page-navigation arrows on the right
     frame.fill_text(cell_text("  HELP", PANEL_COL, 0, GOLD));
+    if page > 0 {
+        frame.fill_text(cell_text("<", PANEL_COL + PANEL_WIDTH - 4, 0, GOLD));
+    }
+    if page + 1 < total {
+        frame.fill_text(cell_text(">", PANEL_COL + PANEL_WIDTH - 2, 0, GOLD));
+    }
 
-    // Page indicator
-    let indicator = format!("  -- {}/{} --", page + 1, total);
-    frame.fill_text(cell_text(indicator, PANEL_COL, 1, DIM));
-
-    // Content lines – stop before the footer row so nothing overflows the panel
+    // Content lines – stop before the last rows so nothing overflows the panel
     for (i, line) in HELP_PAGES[page].iter().enumerate() {
-        let row = i + 2;
+        let row = i + 1;
         if row >= DROWS { break; }
         match line {
             HelpLine::Section(text) => {
@@ -144,13 +145,4 @@ pub(super) fn render_help_overlay(frame: &mut canvas::Frame, page: usize) {
             HelpLine::Empty => {}
         }
     }
-
-    // Navigation footer – bottom of the panel
-    let nav = match (page > 0, page + 1 < total) {
-        (false, true)  => "->     |  any key=close",
-        (true,  false) => "<-     |  any key=close",
-        (true,  true)  => "<- ->  |  any key=close",
-        (false, false) => "any key to close",
-    };
-    frame.fill_text(cell_text(nav, PANEL_COL, DROWS + 1, DIM));
 }

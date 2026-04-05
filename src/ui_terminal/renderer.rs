@@ -85,17 +85,17 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inven
     // Overlay the inventory panel when 'i' is pressed or an item action is pending.
     let show_overlay = show_inventory || game.state().pending_item_action.is_some();
     if show_overlay {
-        render_inventory_overlay(frame, game, show_inventory);
+        render_inventory_overlay(frame, game);
     }
 }
 
 /// Draw the inventory list (or item-selection prompt) overlaid on the right side of the screen.
-fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop, browsing: bool) {
+fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop) {
     use crate::inventory_items::EquipmentSlot;
 
     // Panel starts at column 42, leaving the dungeon visible on the left.
-    const PANEL_COL: usize = 42;
-    const PANEL_WIDTH: usize = DCOLS - PANEL_COL; // extends to the right edge of the game area
+    const PANEL_COL: usize = 52;
+    const PANEL_WIDTH: usize = 28; // cols 52-79; flush to the right edge
 
     let state = game.state();
     let pending = &state.pending_item_action;
@@ -111,9 +111,8 @@ fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop, browsing
         Color::from_rgba(0.04, 0.04, 0.14, 0.95),
     );
 
-    // Header line.
-    let header = "  INVENTORY";
-    frame.fill_text(cell_text(header, PANEL_COL, 0, Color::from_rgb(1.0, 1.0, 0.4)));
+    // Header line – arrows are dim since inventory has no pagination
+    frame.fill_text(cell_text("  INVENTORY", PANEL_COL, 0, Color::from_rgb(1.0, 1.0, 0.4)));
 
     // Determine which items to list.
     let filter_cat = pending.as_ref().and_then(|a| a.filter_category());
@@ -175,21 +174,6 @@ fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop, browsing
         }
     }
 
-    // Footer.
-    let footer = if browsing {
-        "--press any key to continue--".to_string()
-    } else if let Some(action) = pending {
-        action.prompt().to_string()
-    } else {
-        String::new()
-    };
-    let footer_row = DROWS + 1;
-    frame.fill_text(cell_text(
-        footer,
-        PANEL_COL,
-        footer_row,
-        Color::from_rgb(0.0, 1.0, 1.0),
-    ));
 }
 
 // ---------------------------------------------------------------------------
