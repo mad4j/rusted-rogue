@@ -1,71 +1,98 @@
 use iced::widget::canvas;
-use iced::Color;
+use iced::{Color, Point};
 
-use crate::core_types::{DCOLS, DROWS};
+use crate::core_types::DROWS;
 
 use super::renderer::{cell_color, cell_text};
 
+// Panel constants – mirror the inventory overlay
+const PANEL_COL: usize = 42;
+const PANEL_WIDTH: usize = 36;
+
 // ---------------------------------------------------------------------------
-// Help content data
+// Help content
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy)]
 pub(super) enum HelpLine {
     Section(&'static str),
-    Section2(&'static str, &'static str),
-    Binding2(&'static str, &'static str, &'static str, &'static str),
-    Symbol(char, &'static str),
-    Symbol2(char, &'static str, char, &'static str),
+    Binding(&'static str, &'static str), // key  →  description
+    Symbol(char, &'static str),          // glyph →  description
     Empty,
 }
 
-// Page 1: all key bindings in a 2-column layout
-// left col: key at 2, desc at 17  |  right col: key at 40, desc at 43
+// Page 1 – movement and item actions
 const HELP_PAGE_1: &[HelpLine] = &[
-    HelpLine::Section2("Movement", "Actions"),
-    HelpLine::Binding2("h / ArrowLeft", "left", ",", "pick up"),
-    HelpLine::Binding2("l / ArrowRight", "right", "d", "drop"),
-    HelpLine::Binding2("k / ArrowUp", "up", "e", "eat"),
-    HelpLine::Binding2("j / ArrowDown", "down", "q", "quaff"),
-    HelpLine::Binding2("y", "up-left", "r", "read scroll"),
-    HelpLine::Binding2("u", "up-right", "z", "zap wand"),
-    HelpLine::Binding2("b", "down-left", "t", "throw"),
-    HelpLine::Binding2("n", "down-right", "w", "wield weapon"),
-    HelpLine::Binding2("H / J / K / L", "run straight", "W", "wear armor"),
-    HelpLine::Binding2("Y / U / B / N", "run diagonal", "T", "take off armor"),
-    HelpLine::Binding2("", "", "P", "put on ring"),
-    HelpLine::Binding2("", "", "R", "remove ring"),
+    HelpLine::Section("MOVEMENT"),
+    HelpLine::Binding("h", "left"),
+    HelpLine::Binding("l", "right"),
+    HelpLine::Binding("k", "up"),
+    HelpLine::Binding("j", "down"),
+    HelpLine::Binding("y", "up-left"),
+    HelpLine::Binding("u", "up-right"),
+    HelpLine::Binding("b", "dn-left"),
+    HelpLine::Binding("n", "dn-right"),
+    HelpLine::Binding("H/J/K/L", "run"),
+    HelpLine::Binding("Y/U/B/N", "run diag"),
     HelpLine::Empty,
-    HelpLine::Section2("Game", ""),
-    HelpLine::Binding2(".", "rest", "S", "save"),
-    HelpLine::Binding2(">", "descend", "L", "load"),
-    HelpLine::Binding2("^", "ident. trap", "?", "this help"),
-    HelpLine::Binding2("Q / Esc", "quit", "", ""),
+    HelpLine::Section("ACTIONS"),
+    HelpLine::Binding(",", "pick up"),
+    HelpLine::Binding("d", "drop"),
+    HelpLine::Binding("e", "eat"),
+    HelpLine::Binding("q", "quaff"),
+    HelpLine::Binding("r", "read"),
+    HelpLine::Binding("z", "zap wand"),
+    HelpLine::Binding("t", "throw"),
+    HelpLine::Binding("w", "wield"),
+    HelpLine::Empty,
+    HelpLine::Section("ARMOR & RINGS"),
+    HelpLine::Binding("W", "wear"),
+    HelpLine::Binding("T", "take off"),
+    HelpLine::Binding("P", "ring on"),
+    HelpLine::Binding("R", "ring off"),
 ];
 
-// Page 2: map symbols with actual game colours
+// Page 2 – game controls and map legend
 const HELP_PAGE_2: &[HelpLine] = &[
-    HelpLine::Section2("Terrain", "Items"),
-    HelpLine::Symbol2('.', "floor", ')', "weapon"),
-    HelpLine::Symbol2('#', "tunnel / passage", ']', "armor"),
-    HelpLine::Symbol2('+', "door", '!', "potion"),
-    HelpLine::Symbol2('-', "horiz. wall", '?', "scroll"),
-    HelpLine::Symbol2('|', "vert. wall", '/', "wand"),
-    HelpLine::Symbol2('>', "stairs down", '=', "ring"),
-    HelpLine::Symbol2('^', "trap", '%', "food"),
+    HelpLine::Section("GAME"),
+    HelpLine::Binding(".", "rest"),
+    HelpLine::Binding(">", "descend"),
+    HelpLine::Binding("^", "id trap"),
+    HelpLine::Binding("i", "inventory"),
+    HelpLine::Binding("S", "save"),
+    HelpLine::Binding("L", "load"),
+    HelpLine::Binding("Q/Esc", "quit"),
     HelpLine::Empty,
-    HelpLine::Section("Entities"),
-    HelpLine::Symbol('@', "you (player)"),
-    HelpLine::Symbol('k', "monster  (a-z / A-Z)"),
+    HelpLine::Section("TERRAIN"),
+    HelpLine::Symbol('.', "floor"),
+    HelpLine::Symbol('#', "tunnel"),
+    HelpLine::Symbol('+', "door"),
+    HelpLine::Symbol('-', "horiz. wall"),
+    HelpLine::Symbol('|', "vert. wall"),
+    HelpLine::Symbol('>', "stairs"),
+    HelpLine::Symbol('^', "trap"),
+    HelpLine::Empty,
+    HelpLine::Section("ITEMS"),
+    HelpLine::Symbol(')', "weapon"),
+    HelpLine::Symbol(']', "armor"),
+    HelpLine::Symbol('!', "potion"),
+    HelpLine::Symbol('?', "scroll"),
+    HelpLine::Symbol('/', "wand"),
+    HelpLine::Symbol('=', "ring"),
+    HelpLine::Symbol('%', "food"),
+    HelpLine::Empty,
+    HelpLine::Section("ENTITIES"),
+    HelpLine::Symbol('@', "player"),
+    HelpLine::Symbol('k', "monsters a-z/A-Z"),
 ];
 
 pub(super) const HELP_PAGES: &[&[HelpLine]] = &[HELP_PAGE_1, HELP_PAGE_2];
 
 // ---------------------------------------------------------------------------
-// Help screen rendering
+// Help overlay rendering  (same panel style as inventory)
 // ---------------------------------------------------------------------------
 
-pub(super) fn render_help_page(frame: &mut canvas::Frame, page: usize) {
+pub(super) fn render_help_overlay(frame: &mut canvas::Frame, page: usize) {
     const GOLD: Color = Color { r: 1.0, g: 0.78, b: 0.20, a: 1.0 };
     const CYAN: Color = Color { r: 0.39, g: 0.86, b: 1.0, a: 1.0 };
     const YELLOW: Color = Color { r: 1.0, g: 0.86, b: 0.31, a: 1.0 };
@@ -74,50 +101,50 @@ pub(super) fn render_help_page(frame: &mut canvas::Frame, page: usize) {
 
     let total = HELP_PAGES.len();
 
-    frame.fill_text(cell_text("RUSTED ROGUE  -  HELP", DCOLS / 2 - 10, 0, GOLD));
-    let indicator = format!("-- page {} of {} --", page + 1, total);
-    frame.fill_text(cell_text(indicator, DCOLS / 2 - 8, 1, DIM));
+    // Dark background rectangle – same dimensions as the inventory panel
+    let bg_x = PANEL_COL as f32 * super::CELL_W;
+    let bg_y = 0.0_f32;
+    let bg_w = PANEL_WIDTH as f32 * super::CELL_W;
+    let bg_h = (DROWS + 2) as f32 * super::CELL_H;
+    frame.fill_rectangle(
+        Point::new(bg_x, bg_y),
+        iced::Size::new(bg_w, bg_h),
+        Color::from_rgba(0.04, 0.04, 0.14, 0.95),
+    );
 
+    // Header
+    frame.fill_text(cell_text("  HELP", PANEL_COL, 0, GOLD));
+
+    // Page indicator
+    let indicator = format!("  -- {}/{} --", page + 1, total);
+    frame.fill_text(cell_text(indicator, PANEL_COL, 1, DIM));
+
+    // Content lines
     for (i, line) in HELP_PAGES[page].iter().enumerate() {
-        let row = i + 3;
+        let row = i + 2;
         match line {
             HelpLine::Section(text) => {
-                frame.fill_text(cell_text(*text, 2, row, CYAN));
+                frame.fill_text(cell_text(*text, PANEL_COL + 1, row, CYAN));
             }
-            HelpLine::Section2(left, right) => {
-                frame.fill_text(cell_text(*left, 2, row, CYAN));
-                if !right.is_empty() {
-                    frame.fill_text(cell_text(*right, 40, row, CYAN));
-                }
-            }
-            HelpLine::Binding2(key1, desc1, key2, desc2) => {
-                if !key1.is_empty() {
-                    frame.fill_text(cell_text(*key1, 2, row, YELLOW));
-                    frame.fill_text(cell_text(*desc1, 17, row, WHITE));
-                }
-                if !key2.is_empty() {
-                    frame.fill_text(cell_text(*key2, 40, row, YELLOW));
-                    frame.fill_text(cell_text(*desc2, 43, row, WHITE));
-                }
+            HelpLine::Binding(key, desc) => {
+                frame.fill_text(cell_text(*key, PANEL_COL + 2, row, YELLOW));
+                frame.fill_text(cell_text(*desc, PANEL_COL + 10, row, WHITE));
             }
             HelpLine::Symbol(ch, desc) => {
-                frame.fill_text(cell_text(ch.to_string(), 4, row, cell_color(*ch)));
-                frame.fill_text(cell_text(*desc, 8, row, WHITE));
-            }
-            HelpLine::Symbol2(ch1, desc1, ch2, desc2) => {
-                frame.fill_text(cell_text(ch1.to_string(), 4, row, cell_color(*ch1)));
-                frame.fill_text(cell_text(*desc1, 8, row, WHITE));
-                frame.fill_text(cell_text(ch2.to_string(), 44, row, cell_color(*ch2)));
-                frame.fill_text(cell_text(*desc2, 47, row, WHITE));
+                frame.fill_text(cell_text(ch.to_string(), PANEL_COL + 2, row, cell_color(*ch)));
+                frame.fill_text(cell_text(*desc, PANEL_COL + 5, row, WHITE));
             }
             HelpLine::Empty => {}
         }
     }
 
-    let nav = match (page == 0, page + 1 == total) {
-        (_, true) => "<- ArrowLeft: prev page   |   any other key: close",
-        (true, _) => "any other key: close   |   ArrowRight: next page ->",
-        _ => "<- ArrowLeft: prev   |   ArrowRight: next ->   |   any key: close",
+    // Navigation footer – same row as inventory footer
+    let nav = if page == 0 && total > 1 {
+        "-> next  |  any key=close"
+    } else if page + 1 == total && page > 0 {
+        "<- back  |  any key=close"
+    } else {
+        "any key to close"
     };
-    frame.fill_text(cell_text(nav, 2, DROWS + super::UI_ROWS - 1, DIM));
+    frame.fill_text(cell_text(nav, PANEL_COL, DROWS, DIM));
 }

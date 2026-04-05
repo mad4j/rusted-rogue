@@ -3,7 +3,7 @@ use iced::{Color, Point, Theme};
 
 use crate::game_loop::GameLoop;
 
-use super::help::render_help_page;
+use super::help::render_help_overlay;
 use super::renderer::render_game;
 use super::Message;
 
@@ -33,7 +33,8 @@ impl<'a> canvas::Program<Message> for GameCanvas<'a> {
         );
 
         if self.show_help {
-            render_help_page(&mut frame, self.help_page);
+            render_game(&mut frame, self.game, self.show_inventory);
+            render_help_overlay(&mut frame, self.help_page);
         } else {
             render_game(&mut frame, self.game, self.show_inventory);
         }
