@@ -30,8 +30,12 @@ mod tests {
         let monsters_b = spawn_basic_monsters(&level_b, &mut rng_b, player_position, 1);
 
         assert_eq!(monsters_a, monsters_b);
-        assert_eq!(monsters_a.len(), 1);
-        assert_ne!(monsters_a[0].position, player_position);
+        assert!(
+            monsters_a.len() >= 4 && monsters_a.len() <= 6,
+            "expected 4-6 monsters, got {}",
+            monsters_a.len()
+        );
+        assert!(monsters_a.iter().all(|m| m.position != player_position));
     }
 
     #[test]

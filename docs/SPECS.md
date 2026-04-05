@@ -238,18 +238,61 @@ Table of Contents
        mazes).  Amount = rand(2 * level, 16 * level); mazes award 50%
        extra.
 
-   b)  Objects: 2–6 items (plus additional rolls at 33% per extra item)
-       are placed at random floor/tunnel tiles. Object types are chosen
-       by weighted random selection (see Section 8).
+   b)  Objects: A random count of items is placed per level.
+       Algorithm (put_objects / gr_object in object.c):
+
+       1. base_count = coin_toss() ? rand(3, 5) : rand(2, 4)
+       2. Each slot has an additional 33% chance to generate one extra item.
+       3. For each item: pick a random floor or tunnel tile not already
+          occupied; generate the item type by rolling rand(1, 91):
+
+            Roll   Category    Sub-selection
+            ────────────────────────────────────────────────────────
+            1–30   Scroll      rand(0, 85): see §8.4 index order
+            31–60  Potion      rand(1, 118): see §8.3 index order
+            61–64  Wand        rand(0, 9): see §8.5 index order
+            65–74  Weapon      rand(0, 7): see §8.1 index order
+            75–83  Armor       rand(0, 6): see §8.2 index order
+            84–88  Food        mostly food rations, ~25% slime-mold
+            89–91  Ring        rand(0, 10): see §8.6 index order
+
+          Food is forced (overrides roll) if foods_count < cur_level/2.
+
+       4. Items are only placed on the first visit to a level.
 
    c)  Stairs: One downward staircase ('%') per level, placed on a
        random floor tile.
 
-   d)  Traps: 0–MAX_TRAPS (10) hidden traps per level. The number scales
-       with dungeon depth (0 traps on levels 1–2; up to 10 on levels 27+).
-       All traps start hidden (HIDDEN flag set).
+   d)  Traps: 0–MAX_TRAPS (10) hidden traps per level. All begin hidden
+       (HIDDEN flag set). Trap count by dungeon depth (add_traps in trap.c):
 
-   e)  Monsters: 4–6 monsters placed at random. Some wander immediately.
+         Depth      Count range
+         ────────────────────────────────
+         1–2        0  (no traps)
+         3–7        rand(0, 2)
+         8–11       rand(1, 2)
+         12–16      rand(2, 3)
+         17–21      rand(2, 4)
+         22–26      rand(3, 5)
+         ≥ 27       rand(5, MAX_TRAPS)
+
+       Each trap is placed on a random FLOOR tile. Trap type is chosen
+       with equal probability from the six types (indices 0–5).
+
+   e)  Monsters: 4–6 monsters placed at random across walkable terrain
+       (put_mons in monster.c). Algorithm:
+
+       1. count = rand(4, 6)
+       2. For each monster slot:
+          a. Collect all walkable floor, tunnel, and stairs cells not
+             already occupied by another monster.
+          b. Exclude cells within Chebyshev distance 3 of the player
+             spawn position.
+          c. Pick a random eligible cell and MonsterKind whose
+             level_range includes the current dungeon depth.
+          d. Monster starts asleep (ASLEEP flag).
+       3. In a party room: PARTY_WAKE_PERCENT (75%) of monsters start
+          awake instead.
 
    f)  Amulet of Yendor: If not already carried and level >= 26 (AMULET_LEVEL),
        one Amulet is placed.
@@ -349,7 +392,19 @@ Table of Contents
 
    A killed monster:
    - Is removed from level_monsters.
-   - May drop items (cough_up, based on drop_percent).
+   - May drop an item (cough_up in monster.c):
+       Roll rand_percent(drop_percent); on success generate one random
+       item via gr_object() and place it at the monster's last position.
+       drop_percent per monster type (from mon_tab):
+
+         A(Aquator)= 0   B(Bat)    =10   C(Centaur) =15   D(Dragon)  =100
+         E(Emu)    =10   F(Flytrap)= 0   G(Griffin) =20   H(Hobgoblin)=10
+         I(Ice)    = 0   J(Jabber) =70   K(Kestrel) =10   L(Leprechaun)= 0
+         M(Medusa) =40   N(Nymph)  =100  O(Orc)     =15   P(Phantom)  =20
+         Q(Quagga) =15   R(Rattle) =10   S(Snake)   = 0   T(Troll)    =35
+         U(Unicorn)=60   V(Vampire)=20   W(Wraith)  = 0   X(Xeroc)    =30
+         Y(Yeti)   =30   Z(Zombie) = 0
+
    - Awards experience points (see Section 14).
    - Releases HOLDS effect if applicable.
 
@@ -656,10 +711,26 @@ Table of Contents
 11.  Traps
 
    Up to MAX_TRAPS (10) traps may exist per level.  All traps begin
-   hidden.  A trap is revealed when:
-   - The player steps on it (and it triggers or the player's EXP check
-     saves them).
-   - The player searches ('^' identify-adjacent, or 's' search command).
+   hidden (HIDDEN flag).  A trap is revealed when:
+   - The player steps on it (trap always triggers on first step).
+   - The player uses '^' to identify an adjacent trap (marks it known).
+   - The player uses 's' to search adjacent cells (probabilistic reveal).
+
+   The '^' command identifies the first hidden trap among the 8 cells
+   adjacent to the player and marks it in the known_traps list.
+
+   The 's' search command (search() in move.c) examines all 8 adjacent
+   cells in a single pass.  For each cell, if a hidden trap (or secret
+   passage) occupies it, a reveal roll is made:
+
+       reveal_chance = HIDE_PERCENT + player_exp_level + ring_search_exp
+
+   where ring_search_exp = 2 per equipped Ring of Searching.
+   A successful rand_percent(reveal_chance) roll reveals the feature:
+   - Hidden trap: marked as known, message "You found a <name>."
+   - Secret passage: HIDDEN flag cleared; tunnel becomes visible.
+
+   One world turn is consumed by 's' regardless of outcome.
 
    Trap types (index 0–5):
 

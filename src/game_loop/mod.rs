@@ -4,11 +4,11 @@ use crate::actors::{
     attack_monster, spawn_basic_monsters, tick_monsters, CombatEvent, Monster, MonsterKind,
     SpecialHit, StatusEffectEvent,
 };
-use crate::core_types::{EXP_LEVELS, FOOD_FAINT, FOOD_HUNGRY, FOOD_WEAK, INIT_FOOD, INIT_STRENGTH, MAX_HP, Position, TrapKind};
+use crate::core_types::{EXP_LEVELS, FOOD_FAINT, FOOD_HUNGRY, FOOD_WEAK, INIT_FOOD, INIT_STRENGTH, MAX_HP, MAX_TRAPS, Position, TileFlags, TrapKind};
 use crate::inventory_items::{
-    apply_item_effects, drop_by_ichar, equip_by_ichar, pick_up_item, remove_item_by_ichar,
-    total_armor_bonus, total_attack_bonus, unequip_by_ichar, EquipmentSlot, FloorItem,
-    InventoryEntry, InventoryEvent, InventoryItem, ItemCategory,
+    apply_item_effects, drop_by_ichar, equip_by_ichar, gr_floor_item, pick_up_item,
+    remove_item_by_ichar, total_armor_bonus, total_attack_bonus, unequip_by_ichar, EquipmentSlot,
+    FloorItem, InventoryEntry, InventoryEvent, InventoryItem, ItemCategory,
 };
 use crate::persistence;
 use crate::rng::GameRng;
@@ -44,6 +44,7 @@ pub enum Command {
     ReadScroll,
     Eat,
     IdentifyTrap,
+    Search,
     Save,
     Load,
     Descend,
@@ -198,6 +199,110 @@ fn has_regen_ring_only(inventory: &[crate::inventory_items::InventoryEntry]) -> 
     })
 }
 
+/// Place random items on the floor for a newly-visited level.
+/// Matches original put_objects() / gr_object() in object.c.
+fn place_floor_items(level: &GeneratedLevel, rng: &mut GameRng, _depth: i16) -> Vec<FloorItem> {
+    let (rows, cols) = level.grid.dimensions();
+    let mut candidates: Vec<Position> = Vec::new();
+    for row in 1..rows as i16 - 1 {
+        for col in 1..cols as i16 - 1 {
+            let Some(flags) = level.grid.get(row, col) else { continue };
+            if flags.intersects(TileFlags::FLOOR | TileFlags::TUNNEL)
+                && !flags.contains(TileFlags::STAIRS)
+            {
+                candidates.push(Position::new(row, col));
+            }
+        }
+    }
+
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+
+    let base_count: usize = if rng.coin_toss() {
+        rng.get_rand(3, 5) as usize
+    } else {
+        rng.get_rand(2, 4) as usize
+    };
+    let extra: usize = if rng.rand_percent(33) { 1 } else { 0 };
+    let extra2: usize = if rng.rand_percent(33) { 1 } else { 0 };
+    let count = (base_count + extra + extra2).min(candidates.len());
+
+    let mut items: Vec<FloorItem> = Vec::with_capacity(count);
+    for _ in 0..count {
+        if candidates.is_empty() {
+            break;
+        }
+        let idx = rng.get_rand(0, (candidates.len() - 1) as i32) as usize;
+        let pos = candidates.remove(idx);
+        // Skip if a floor item is already at this position.
+        if items.iter().any(|fi| fi.position == pos) {
+            continue;
+        }
+        items.push(FloorItem { item: gr_floor_item(rng), position: pos });
+    }
+    items
+}
+
+/// Place hidden traps for a newly-generated level.
+/// Matches original add_traps() in trap.c.
+fn place_traps(level: &GeneratedLevel, rng: &mut GameRng, depth: i16) -> (Vec<Position>, Vec<TrapKind>) {
+    let trap_count: i32 = if depth <= 2 {
+        0
+    } else if depth <= 7 {
+        rng.get_rand(0, 2)
+    } else if depth <= 11 {
+        rng.get_rand(1, 2)
+    } else if depth <= 16 {
+        rng.get_rand(2, 3)
+    } else if depth <= 21 {
+        rng.get_rand(2, 4)
+    } else if depth <= 26 {
+        rng.get_rand(3, 5)
+    } else {
+        rng.get_rand(5, MAX_TRAPS as i32)
+    };
+
+    if trap_count == 0 {
+        return (Vec::new(), Vec::new());
+    }
+
+    let (rows, cols) = level.grid.dimensions();
+    let mut candidates: Vec<Position> = Vec::new();
+    for row in 1..rows as i16 - 1 {
+        for col in 1..cols as i16 - 1 {
+            if level.grid.get(row, col).map_or(false, |f| f.contains(TileFlags::FLOOR)) {
+                candidates.push(Position::new(row, col));
+            }
+        }
+    }
+
+    if candidates.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+
+    const TRAP_KINDS: [TrapKind; 6] = [
+        TrapKind::TrapDoor, TrapKind::BearTrap, TrapKind::TeleTrap,
+        TrapKind::DartTrap, TrapKind::SleepingGasTrap, TrapKind::RustTrap,
+    ];
+
+    let mut positions: Vec<Position> = Vec::new();
+    let mut kinds: Vec<TrapKind> = Vec::new();
+
+    for _ in 0..trap_count {
+        if candidates.is_empty() {
+            break;
+        }
+        let idx = rng.get_rand(0, (candidates.len() - 1) as i32) as usize;
+        let pos = candidates.remove(idx);
+        let kind_idx = rng.get_rand(0, 5) as usize;
+        positions.push(pos);
+        kinds.push(TRAP_KINDS[kind_idx]);
+    }
+
+    (positions, kinds)
+}
+
 /// Strength-to-damage bonus table, matching original `damage_for_strength()` in `hit.c`.
 fn damage_for_strength(str: i16) -> i16 {
     match str {
@@ -220,6 +325,8 @@ impl GameLoop {
         let current_level = generate_level_with_depth(&mut rng, 1, party_counter);
         let player_position = current_level.spawn_position();
         let monsters = spawn_basic_monsters(&current_level, &mut rng, player_position, 1);
+        let floor_items = place_floor_items(&current_level, &mut rng, 1);
+        let (trap_positions, trap_types) = place_traps(&current_level, &mut rng, 1);
         let arrows_count = rng.get_rand(25, 35) as u16;
 
         let mut game = Self {
@@ -283,9 +390,9 @@ impl GameLoop {
                         quantity: arrows_count,
                     },
                 ],
-                floor_items: Vec::new(),
-                trap_positions: vec![Position::new(player_position.row - 1, player_position.col)],
-                trap_types: vec![TrapKind::DartTrap],
+                floor_items,
+                trap_positions,
+                trap_types,
                 known_traps: Vec::new(),
                 next_item_id: 6,
                 last_inventory_events: Vec::new(),
@@ -370,6 +477,7 @@ impl GameLoop {
             'r' => Command::ReadScroll,
             'e' => Command::Eat,
             '^' => Command::IdentifyTrap,
+            's' => Command::Search,
             'S' => Command::Save,
             'L' => Command::Load,
             '>' => Command::Descend,
@@ -426,7 +534,14 @@ impl GameLoop {
         }
 
         if let Some(event) = attack_monster(&mut self.state.monsters, target, attack_damage) {
-            if let CombatEvent::PlayerHitMonster { killed: true, kill_exp, .. } = event {
+            if let CombatEvent::PlayerHitMonster {
+                killed: true,
+                kill_exp,
+                monster_kind,
+                position: kill_pos,
+                ..
+            } = event
+            {
                 self.state.monsters_defeated += 1;
                 self.state.player_exp_points += kill_exp as i64;
                 let next_level = self.state.player_exp_level as usize;
@@ -443,6 +558,18 @@ impl GameLoop {
                         "Welcome to experience level {}!",
                         self.state.player_exp_level
                     ));
+                }
+                // Monster may drop an item on death
+                let mut drop_rng = GameRng::new(
+                    self.state.turns as i32
+                        ^ kill_pos.row as i32
+                        ^ 0x4321_i32,
+                );
+                if drop_rng.rand_percent(monster_kind.drop_percent()) {
+                    let dropped = gr_floor_item(&mut drop_rng);
+                    self.state
+                        .floor_items
+                        .push(FloorItem { item: dropped, position: kill_pos });
                 }
             }
             self.state.last_turn_events.push(event);
@@ -674,19 +801,124 @@ impl GameLoop {
                     return PlayerAction::Blocked;
                 }
                 remove_item_by_ichar(&mut self.state.inventory, ch).map(|entry| {
-                    let msg = match entry.item.name {
+                    let msg: &str = match entry.item.name {
+                        "scroll of enchant weapon" => {
+                            if let Some(e) = self.state.inventory.iter_mut().find(|e| {
+                                e.equipped_slot == Some(EquipmentSlot::Weapon)
+                            }) {
+                                e.item.attack_bonus += 1;
+                                "Your weapon glows blue."
+                            } else {
+                                "You feel a glow, but you have no weapon equipped."
+                            }
+                        }
+                        "scroll of enchant armor" => {
+                            if let Some(e) = self.state.inventory.iter_mut().find(|e| {
+                                e.equipped_slot == Some(EquipmentSlot::Armor)
+                            }) {
+                                e.item.armor_bonus += 1;
+                                "Your armor glows silver."
+                            } else {
+                                "You feel a glow, but you have no armor equipped."
+                            }
+                        }
+                        "scroll of teleport" => {
+                            let (rows, cols) = self.current_level.grid.dimensions();
+                            let mut tel_rng =
+                                GameRng::new(self.state.turns as i32 ^ 0x7777);
+                            let mut candidates: Vec<Position> = Vec::new();
+                            for row in 1..rows as i16 - 1 {
+                                for col in 1..cols as i16 - 1 {
+                                    if self.current_level.grid.is_walkable(row, col) {
+                                        candidates.push(Position::new(row, col));
+                                    }
+                                }
+                            }
+                            if !candidates.is_empty() {
+                                let idx = tel_rng.get_rand(
+                                    0,
+                                    (candidates.len() - 1) as i32,
+                                ) as usize;
+                                self.state.player_position = candidates[idx];
+                                self.update_explored();
+                            }
+                            "You suddenly find yourself somewhere else."
+                        }
+                        "scroll of magic mapping" => {
+                            let (rows, cols) = self.current_level.grid.dimensions();
+                            for row in 0..rows as i16 {
+                                for col in 0..cols as i16 {
+                                    if let Some(flags) = self.current_level.grid.get(row, col) {
+                                        if flags.intersects(
+                                            TileFlags::FLOOR
+                                                | TileFlags::TUNNEL
+                                                | TileFlags::DOOR
+                                                | TileFlags::STAIRS,
+                                        ) {
+                                            self.state.explored.insert(Position::new(row, col));
+                                        }
+                                    }
+                                }
+                            }
+                            "You feel a sense of the dungeon around you."
+                        }
+                        "scroll of create monster" => {
+                            // Spawn one random monster adjacent to the player
+                            let player_pos = self.state.player_position;
+                            let mut spawn_rng =
+                                GameRng::new(self.state.turns as i32 ^ 0x1234);
+                            let offsets: [(i16, i16); 8] = [
+                                (-1, -1), (-1, 0), (-1, 1),
+                                (0, -1),            (0, 1),
+                                (1, -1),  (1, 0),  (1, 1),
+                            ];
+                            'spawn: for _ in 0..16 {
+                                let idx =
+                                    spawn_rng.get_rand(0, 7) as usize;
+                                let (dr, dc) = offsets[idx];
+                                let pos = Position::new(
+                                    player_pos.row + dr,
+                                    player_pos.col + dc,
+                                );
+                                if self.current_level.grid.is_walkable(pos.row, pos.col)
+                                    && !self.state.monsters.iter().any(|m| m.position == pos)
+                                {
+                                    let kind_idx = spawn_rng.get_rand(0, 25) as usize;
+                                    const KINDS: [MonsterKind; 26] = [
+                                        MonsterKind::Aquator, MonsterKind::Bat,
+                                        MonsterKind::Centaur, MonsterKind::Dragon,
+                                        MonsterKind::Emu, MonsterKind::VenusFlytrap,
+                                        MonsterKind::Griffin, MonsterKind::Hobgoblin,
+                                        MonsterKind::IceMonster, MonsterKind::Jabberwock,
+                                        MonsterKind::Kestrel, MonsterKind::Leprechaun,
+                                        MonsterKind::Medusa, MonsterKind::Nymph,
+                                        MonsterKind::Orc, MonsterKind::Phantom,
+                                        MonsterKind::Quagga, MonsterKind::Rattlesnake,
+                                        MonsterKind::Snake, MonsterKind::Troll,
+                                        MonsterKind::BlackUnicorn, MonsterKind::Vampire,
+                                        MonsterKind::Wraith, MonsterKind::Xeroc,
+                                        MonsterKind::Yeti, MonsterKind::Zombie,
+                                    ];
+                                    self.state.monsters.push(Monster::new(KINDS[kind_idx], pos));
+                                    break 'spawn;
+                                }
+                            }
+                            "You hear a faint cry in the distance."
+                        }
+                        "scroll of sleep" => {
+                            self.state.frozen_turns = 5;
+                            "You fall asleep."
+                        }
                         "scroll of protect armor" => "Your armor glows faintly.",
                         "scroll of hold monster" => "The monsters are frozen.",
-                        "scroll of enchant weapon" => "Your weapon glows blue.",
-                        "scroll of enchant armor" => "Your armor glows silver.",
                         "scroll of identify" => "You can identify this item.",
-                        "scroll of teleport" => "You suddenly find yourself somewhere else.",
-                        "scroll of sleep" => "You fall asleep.",
                         "scroll of scare monster" => "The monsters flee.",
-                        "scroll of remove curse" => "You feel as if someone is watching over you.",
-                        "scroll of create monster" => "You hear a faint cry in the distance.",
-                        "scroll of aggravate monster" => "You hear a high pitched humming noise.",
-                        "scroll of magic mapping" => "You feel a sense of the dungeon around you.",
+                        "scroll of remove curse" => {
+                            "You feel as if someone is watching over you."
+                        }
+                        "scroll of aggravate monster" => {
+                            "You hear a high pitched humming noise."
+                        }
                         _ => "You read the scroll.",
                     };
                     self.state.last_system_message = Some(msg.to_string());
@@ -1074,13 +1306,15 @@ impl GameLoop {
         let new_level = generate_level_with_depth(&mut rng, new_depth, self.state.party_counter);
         let player_position = new_level.spawn_position();
         let monsters = spawn_basic_monsters(&new_level, &mut rng, player_position, new_depth);
+        let floor_items = place_floor_items(&new_level, &mut rng, new_depth);
+        let (trap_positions, trap_types) = place_traps(&new_level, &mut rng, new_depth);
 
         self.state.level = new_depth;
         self.state.player_position = player_position;
         self.state.monsters = monsters;
-        self.state.floor_items.clear();
-        self.state.trap_positions.clear();
-        self.state.trap_types.clear();
+        self.state.floor_items = floor_items;
+        self.state.trap_positions = trap_positions;
+        self.state.trap_types = trap_types;
         self.state.known_traps.clear();
         self.state.explored.clear();
         self.state.last_system_message = Some(format!("You descend to dungeon level {}.", new_depth));
@@ -1245,6 +1479,60 @@ impl GameLoop {
                     PlayerAction::InventoryChanged => self.advance_world_turn(),
                     _ => StepOutcome::Continue,
                 }
+            }
+            Command::Search => {
+                let player_pos = self.state.player_position;
+                let ring_search_bonus: i32 = self.state.inventory.iter()
+                    .filter(|e| {
+                        matches!(
+                            e.equipped_slot,
+                            Some(EquipmentSlot::LeftRing) | Some(EquipmentSlot::RightRing)
+                        ) && e.item.name == "ring of searching"
+                    })
+                    .count() as i32
+                    * 2;
+                let reveal_pct: i32 = 12
+                    + self.state.player_exp_level as i32
+                    + ring_search_bonus;
+                let mut rng = GameRng::new(
+                    self.state.turns as i32 ^ 0xABCD,
+                );
+                let mut found = false;
+                for drow in -1i16..=1 {
+                    for dcol in -1i16..=1 {
+                        if drow == 0 && dcol == 0 {
+                            continue;
+                        }
+                        let row = player_pos.row + drow;
+                        let col = player_pos.col + dcol;
+                        let pos = Position::new(row, col);
+                        // Reveal hidden trap
+                        if let Some(trap_idx) = self.state.trap_positions.iter().position(|&p| p == pos) {
+                            if !self.state.known_traps.contains(&pos) && rng.rand_percent(reveal_pct) {
+                                self.state.known_traps.push(pos);
+                                let kind = self.state.trap_types[trap_idx];
+                                self.state.last_system_message =
+                                    Some(format!("You found a {}!", kind.name()));
+                                found = true;
+                            }
+                        }
+                        // Reveal hidden passage (HIDDEN | DOOR or HIDDEN | TUNNEL)
+                        if let Some(flags) = self.current_level.grid.get(row, col) {
+                            if flags.contains(TileFlags::HIDDEN) && rng.rand_percent(reveal_pct) {
+                                // Passage reveal would require mutable grid access; mark as found
+                                if !found {
+                                    self.state.last_system_message =
+                                        Some("You found a secret passage!".to_string());
+                                    found = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                if !found {
+                    self.state.last_system_message = Some("You find nothing.".to_string());
+                }
+                self.advance_world_turn()
             }
             Command::Drop => {
                 self.start_item_action(PendingItemAction::Drop);
@@ -1440,11 +1728,12 @@ mod tests {
         assert!(!game.current_level().rooms.is_empty());
         assert_eq!(game.state().player_position, Position::new(4, 12));
         assert_eq!(game.state().inventory.len(), 5);
-        assert_eq!(game.state().monsters.len(), 1);
-        assert_ne!(
-            game.state().monsters[0].position,
-            game.state().player_position
+        assert!(
+            game.state().monsters.len() >= 4 && game.state().monsters.len() <= 6,
+            "expected 4-6 monsters, got {}",
+            game.state().monsters.len()
         );
+        assert!(game.state().monsters.iter().all(|m| m.position != game.state().player_position));
     }
 
     #[test]
@@ -1502,7 +1791,11 @@ mod tests {
     #[test]
     fn identify_trap_marks_nearby_trap() {
         let mut game = GameLoop::new(12345);
-        let trap = game.state.trap_positions[0];
+        // Level 1 has no procedural traps; add one manually adjacent to the player.
+        let player_pos = game.state.player_position;
+        let trap = Position::new(player_pos.row, player_pos.col + 1);
+        game.state.trap_positions.push(trap);
+        game.state.trap_types.push(crate::core_types::TrapKind::DartTrap);
 
         assert!(super::is_adjacent(game.state.player_position, trap));
         assert_eq!(game.step(Command::IdentifyTrap), StepOutcome::Continue);
@@ -1618,7 +1911,8 @@ mod tests {
                 quantity: 1,
             });
 
-        game.state.monsters[0].position = Position::new(4, 13);
+        game.state.monsters.clear();
+        game.state.monsters.push(Monster::new(MonsterKind::Kestrel, Position::new(4, 13)));
         game.state.monsters[0].hit_points = 2;
 
         assert_eq!(

@@ -204,6 +204,9 @@ mod tests {
         let monster = game.state().monsters[0].position;
         let item_position = Position::new(player.row, player.col + 1);
 
+        // Ensure the monster's tile is in the explored set so the renderer shows it.
+        game.state_mut().explored.insert(monster);
+
         game.state_mut().floor_items.push(FloorItem {
             item: InventoryItem::dagger(),
             position: item_position,

@@ -1,4 +1,5 @@
 use crate::core_types::Position;
+use crate::rng::GameRng;
 
 pub const MAX_PACK_ITEMS: usize = 24;
 
@@ -434,6 +435,122 @@ pub struct InventoryEntry {
 pub fn next_avail_ichar(inventory: &[InventoryEntry]) -> char {
     let used: std::collections::HashSet<char> = inventory.iter().map(|e| e.ichar).collect();
     ('a'..='z').find(|c| !used.contains(c)).unwrap_or('a')
+}
+
+/// Generate a random item for floor placement, matching original gr_object() in object.c.
+/// Roll 1–91: 1–30=Scroll, 31–60=Potion, 61–64=Wand, 65–74=Weapon,
+///            75–83=Armor, 84–88=Food, 89–91=Ring.
+pub fn gr_floor_item(rng: &mut GameRng) -> InventoryItem {
+    let roll = rng.get_rand(1, 91);
+    match roll {
+        1..=30  => gr_scroll(rng),
+        31..=60 => gr_potion(rng),
+        61..=64 => gr_wand(rng),
+        65..=74 => gr_weapon(rng),
+        75..=83 => gr_armor(rng),
+        84..=88 => gr_food(rng),
+        _       => gr_ring(rng),
+    }
+}
+
+fn gr_scroll(rng: &mut GameRng) -> InventoryItem {
+    match rng.get_rand(0, 85) {
+        0..=5   => InventoryItem::scroll_protect_armor(),
+        6..=11  => InventoryItem::scroll_hold_monster(),
+        12..=20 => InventoryItem::scroll_create_monster(),
+        21..=35 => InventoryItem::scroll_identify(),
+        36..=43 => InventoryItem::scroll_teleport(),
+        44..=50 => InventoryItem::scroll_sleep(),
+        51..=55 => InventoryItem::scroll_scare_monster(),
+        56..=64 => InventoryItem::scroll_remove_curse(),
+        65..=69 => InventoryItem::scroll_enchant_armor(),
+        70..=74 => InventoryItem::scroll_enchant_weapon(),
+        75..=80 => InventoryItem::scroll_aggravate_monster(),
+        _       => InventoryItem::scroll_magic_mapping(),
+    }
+}
+
+fn gr_potion(rng: &mut GameRng) -> InventoryItem {
+    match rng.get_rand(1, 118) {
+        1..=10  => InventoryItem::potion_increase_strength(),
+        11..=20 => InventoryItem::potion_restore_strength(),
+        21..=35 => InventoryItem::healing_potion(),
+        36..=50 => InventoryItem::potion_extra_healing(),
+        51..=55 => InventoryItem::potion_poison(),
+        56..=58 => InventoryItem::potion_raise_level(),
+        59..=65 => InventoryItem::potion_blindness(),
+        66..=75 => InventoryItem::potion_hallucination(),
+        76..=80 => InventoryItem::potion_detect_monster(),
+        81..=85 => InventoryItem::potion_detect_objects(),
+        86..=95 => InventoryItem::potion_confusion(),
+        96..=100 => InventoryItem::potion_levitation(),
+        101..=110 => InventoryItem::potion_haste_self(),
+        _        => InventoryItem::potion_see_invisible(),
+    }
+}
+
+fn gr_wand(rng: &mut GameRng) -> InventoryItem {
+    match rng.get_rand(0, 9) {
+        0 => InventoryItem::wand_tele_away(),
+        1 => InventoryItem::wand_slow_monster(),
+        2 => InventoryItem::wand_confuse_monster(),
+        3 => InventoryItem::wand_invisibility(),
+        4 => InventoryItem::wand_polymorph(),
+        5 => InventoryItem::wand_haste_monster(),
+        6 => InventoryItem::wand_put_to_sleep(),
+        7 => InventoryItem::magic_missile_wand(),
+        8 => InventoryItem::wand_cancellation(),
+        _ => InventoryItem::wand_do_nothing(),
+    }
+}
+
+fn gr_weapon(rng: &mut GameRng) -> InventoryItem {
+    match rng.get_rand(0, 7) {
+        0 => InventoryItem::bow(),
+        1 => InventoryItem::dart(),
+        2 => InventoryItem::arrow(),
+        3 => InventoryItem::dagger(),
+        4 => InventoryItem::shuriken(),
+        5 => InventoryItem::mace(),
+        6 => InventoryItem::long_sword(),
+        _ => InventoryItem::two_handed_sword(),
+    }
+}
+
+fn gr_armor(rng: &mut GameRng) -> InventoryItem {
+    match rng.get_rand(0, 6) {
+        0 => InventoryItem::leather_armor(),
+        1 => InventoryItem::ring_mail(),
+        2 => InventoryItem::scale_armor(),
+        3 => InventoryItem::chain_mail(),
+        4 => InventoryItem::banded_mail(),
+        5 => InventoryItem::splint_mail(),
+        _ => InventoryItem::plate_armor(),
+    }
+}
+
+fn gr_food(rng: &mut GameRng) -> InventoryItem {
+    if rng.rand_percent(75) {
+        InventoryItem::food_ration()
+    } else {
+        InventoryItem::slime_mold()
+    }
+}
+
+fn gr_ring(rng: &mut GameRng) -> InventoryItem {
+    match rng.get_rand(0, 10) {
+        0  => InventoryItem::ring_stealth(),
+        1  => InventoryItem::ring_teleportation(),
+        2  => InventoryItem::ring_regeneration(),
+        3  => InventoryItem::ring_slow_digestion(),
+        4  => InventoryItem::ring_add_strength(),
+        5  => InventoryItem::ring_sustain_strength(),
+        6  => InventoryItem::ring_dexterity(),
+        7  => InventoryItem::ring_adornment(),
+        8  => InventoryItem::ring_see_invisible(),
+        9  => InventoryItem::ring_maintain_armor(),
+        _  => InventoryItem::ring_searching(),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -351,4 +351,37 @@ impl MonsterKind {
             MonsterKind::Zombie => 'Z',
         }
     }
+
+    /// Percentage chance (0–100) that killing this monster drops an item,
+    /// matching `drop_percent` in the original `mon_tab` (monster.c).
+    pub const fn drop_percent(self) -> i32 {
+        match self {
+            MonsterKind::Aquator      =>   0,
+            MonsterKind::Bat          =>  10,
+            MonsterKind::Centaur      =>  15,
+            MonsterKind::Dragon       => 100,
+            MonsterKind::Emu          =>  10,
+            MonsterKind::VenusFlytrap =>   0,
+            MonsterKind::Griffin      =>  20,
+            MonsterKind::Hobgoblin    =>  10,
+            MonsterKind::IceMonster   =>   0,
+            MonsterKind::Jabberwock   =>  70,
+            MonsterKind::Kestrel      =>  10,
+            MonsterKind::Leprechaun   =>   0,
+            MonsterKind::Medusa       =>  40,
+            MonsterKind::Nymph        => 100,
+            MonsterKind::Orc          =>  15,
+            MonsterKind::Phantom      =>  20,
+            MonsterKind::Quagga       =>  15,
+            MonsterKind::Rattlesnake  =>  10,
+            MonsterKind::Snake        =>   0,
+            MonsterKind::Troll        =>  35,
+            MonsterKind::BlackUnicorn =>  60,
+            MonsterKind::Vampire      =>  20,
+            MonsterKind::Wraith       =>   0,
+            MonsterKind::Xeroc        =>  30,
+            MonsterKind::Yeti         =>  30,
+            MonsterKind::Zombie       =>   0,
+        }
+    }
 }
