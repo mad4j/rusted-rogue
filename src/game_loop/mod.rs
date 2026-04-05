@@ -4,7 +4,7 @@ use crate::actors::{
     attack_monster, spawn_basic_monsters, tick_monsters, CombatEvent, Monster, MonsterKind,
     SpecialHit, StatusEffectEvent,
 };
-use crate::core_types::{EXP_LEVELS, FOOD_FAINT, FOOD_HUNGRY, FOOD_WEAK, INIT_FOOD, INIT_STRENGTH, MAX_HP, MAX_TRAPS, Position, TileFlags, TrapKind};
+use crate::core_types::{EXP_LEVELS, FOOD_FAINT, FOOD_HUNGRY, FOOD_WEAK, INIT_FOOD, INIT_HP, INIT_STRENGTH, MAX_HP, MAX_TRAPS, Position, TileFlags, TrapKind};
 use crate::inventory_items::{
     apply_item_effects, drop_by_ichar, equip_by_ichar, gr_floor_item, pick_up_item,
     remove_item_by_ichar, total_armor_bonus, total_attack_bonus, unequip_by_ichar, EquipmentSlot,
@@ -338,8 +338,8 @@ impl GameLoop {
                 pending_direction: None,
                 pending_item_action: None,
                 player_position,
-                player_hit_points: 12,
-                player_max_hit_points: 12,
+                player_hit_points: INIT_HP,
+                player_max_hit_points: INIT_HP,
                 player_strength: INIT_STRENGTH,
                 player_max_strength: INIT_STRENGTH,
                 player_exp_points: 0,

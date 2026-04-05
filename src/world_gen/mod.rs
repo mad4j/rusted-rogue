@@ -5,7 +5,9 @@ mod rooms;
 mod slots;
 mod types;
 
-pub use generator::{generate_level, generate_level_with_depth};
+pub use generator::generate_level_with_depth;
+#[cfg(test)]
+pub use generator::generate_level;
 pub use types::{DoorLink, DungeonGrid, GeneratedLevel, Room};
 
 #[cfg(test)]

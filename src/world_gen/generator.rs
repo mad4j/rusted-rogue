@@ -307,6 +307,7 @@ pub fn generate_level_with_depth(rng: &mut GameRng, level_depth: i16, party_coun
     GeneratedLevel { grid, rooms, stairs_position }
 }
 
+#[cfg(test)]
 pub fn generate_level(rng: &mut GameRng) -> GeneratedLevel {
     generate_level_with_depth(rng, 1, i16::MAX)
 }

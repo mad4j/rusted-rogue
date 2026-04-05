@@ -6,7 +6,7 @@ pub mod combat;
 pub use types::{MonsterKind, SpecialHit, StatusEffectEvent, CombatEvent};
 pub use monster::Monster;
 pub use spawn::spawn_basic_monsters;
-pub use combat::{roll_damage_string, attack_monster, tick_monsters};
+pub use combat::{attack_monster, tick_monsters};
 
 #[cfg(test)]
 mod tests {
