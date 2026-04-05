@@ -60,6 +60,9 @@ pub(super) fn cell_color(ch: char) -> Color {
 // Game screen rendering
 // ---------------------------------------------------------------------------
 
+// Column at which the side panel starts (keep in sync with overlay constants)
+const PANEL_COL: usize = 52;
+
 pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inventory: bool) {
     let lookups = RenderLookups::from_game(game);
 
@@ -71,10 +74,18 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inven
         Color::from_rgb(1.0, 0.78, 0.59),
     ));
 
+    let show_overlay = show_inventory || game.state().pending_item_action.is_some();
+
     for row in 0..DROWS {
         for col in 0..DCOLS {
             let ch = render_cell(game, Position::new(row as i16, col as i16), &lookups);
-            let color = cell_color(ch);
+            // Dim cells that fall under the side panel so their colour does not
+            // bleed through the semi-transparent overlay.
+            let color = if show_overlay && col >= PANEL_COL {
+                dim_color(cell_color(ch))
+            } else {
+                cell_color(ch)
+            };
             frame.fill_text(cell_text(ch.to_string(), col, row + 1, color));
         }
     }
@@ -83,18 +94,20 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inven
     frame.fill_text(cell_text(status, 0, DROWS + 1, Color::from_rgb(1.0, 1.0, 0.39)));
 
     // Overlay the inventory panel when 'i' is pressed or an item action is pending.
-    let show_overlay = show_inventory || game.state().pending_item_action.is_some();
     if show_overlay {
         render_inventory_overlay(frame, game);
     }
+}
+
+/// Reduce brightness of a colour to indicate it is behind the panel overlay.
+fn dim_color(c: Color) -> Color {
+    Color { r: c.r * 0.25, g: c.g * 0.25, b: c.b * 0.25, a: c.a }
 }
 
 /// Draw the inventory list (or item-selection prompt) overlaid on the right side of the screen.
 fn render_inventory_overlay(frame: &mut canvas::Frame, game: &GameLoop) {
     use crate::inventory_items::EquipmentSlot;
 
-    // Panel starts at column 42, leaving the dungeon visible on the left.
-    const PANEL_COL: usize = 52;
     const PANEL_WIDTH: usize = 28; // cols 52-79; flush to the right edge
 
     let state = game.state();

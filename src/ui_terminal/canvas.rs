@@ -33,7 +33,7 @@ impl<'a> canvas::Program<Message> for GameCanvas<'a> {
         );
 
         if self.show_help {
-            render_game(&mut frame, self.game, self.show_inventory);
+            render_game(&mut frame, self.game, self.show_inventory || self.show_help);
             render_help_overlay(&mut frame, self.help_page);
         } else {
             render_game(&mut frame, self.game, self.show_inventory);

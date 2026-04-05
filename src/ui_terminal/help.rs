@@ -44,6 +44,7 @@ const HELP_PAGE_1: &[HelpLine] = &[
     HelpLine::Binding("z", "zap wand"),
     HelpLine::Binding("t", "throw"),
     HelpLine::Binding("w", "wield"),
+    HelpLine::Binding("s", "search"),
     HelpLine::Empty,
 ];
 
@@ -60,6 +61,7 @@ const HELP_PAGE_2: &[HelpLine] = &[
     HelpLine::Binding(">", "descend"),
     HelpLine::Binding("^", "id trap"),
     HelpLine::Binding("i", "inventory"),
+    HelpLine::Binding("?", "help"),
     HelpLine::Binding("S", "save"),
     HelpLine::Binding("L", "load"),
     HelpLine::Binding("Q/Esc", "quit"),
