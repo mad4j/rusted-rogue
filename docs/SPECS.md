@@ -64,6 +64,7 @@ Table of Contents
   17.  Command Reference
   18.  Options (ROGUEOPTS)
   19.  Constants Reference
+  20.  Wizard Mode
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -987,3 +988,141 @@ Authors' Note
    Implementation details not observable through gameplay (e.g., score
    file obfuscation algorithm, exact RNG sequence) are intentionally
    omitted.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+20.  Wizard Mode
+
+   Wizard mode is a privileged debug/testing mode that grants the player
+   invulnerability, unrestricted navigation, and access to diagnostic
+   commands.  When wizard mode is active the game run is automatically
+   disqualified from the high-score table (`score_only = true`).
+
+20.1.  Activation and Deactivation
+
+   Wizard mode is toggled at runtime by pressing Ctrl+W.
+
+   If wizard mode is currently INACTIVE:
+   a)  The game prompts "wizard's password:".
+   b)  The player types the password (input is not echoed).
+   c)  The input is transformed with the obfuscation cipher defined in
+       score.c: `xxx()` initialises the PRNG to f=37, s=7; `xxxx()` XORs
+       each byte of the input with successive `(unsigned char) xxx(0)` 
+       values.
+   d)  The transformed result is compared with the seven-byte literal
+       `"\247\104\126\272\115\243\027"`.  The plaintext password that
+       satisfies this check is "bathtub".
+   e)  On success: `wizard` is set to 1, `score_only` is set to 1, and
+       the message "Welcome, mighty wizard!" is shown.
+   f)  On failure: the message "sorry" is shown and the game continues
+       with wizard mode inactive.
+
+   If wizard mode is currently ACTIVE:
+   a)  `wizard` is set to 0 immediately (no password required to
+       deactivate).
+   b)  The message "not wizard anymore" is shown.
+
+   Source: `wizardize()` in `zap.c`.
+
+20.2.  Score Disqualification
+
+   Setting `wizard = 1` also sets `score_only = 1`.  When `score_only`
+   is set, the normal score-file update path is skipped; the run is
+   NOT recorded to the shared top-ten score file.  This flag persists
+   for the rest of the run and CANNOT be cleared.
+
+   Source: `wizardize()` in `zap.c`; score recording guards in `score.c`.
+
+20.3.  Wizard-Only Commands
+
+   The following key bindings are available ONLY while `wizard == 1`.
+   Pressing these keys without wizard mode active displays the "unknown
+   command" error message.
+
+   Key        Function
+   ─────────  ──────────────────────────────────────────────────────
+   Tab        Show all items currently on the dungeon floor
+              (`inventory(&level_objects, ALL_OBJECTS)`)
+   Ctrl+S     Draw magic map – reveal the entire level layout
+              (walls, tunnels, doors, stairs, traps); equivalent to
+              the Scroll of Magic Mapping effect
+   Ctrl+T     Show all traps – mark every trap cell with '^'
+   Ctrl+O     Show all objects – render the map character of every
+              floor item at its position
+   Ctrl+C     Create a new item – prompt for object type (using the
+              item glyph: !, ?, :, ), ], /, =, ,) and then for the
+              specific kind number; add the resulting item to the
+              player's pack
+   Ctrl+M     Show all monsters – render every monster's glyph at its
+              position and reveal imitators
+
+   Source: `play_level()` in `play.c`; `new_object_for_wizard()` in
+   `object.c`; `show_monsters()` in `monster.c`; `show_objects()` in
+   `object.c`; `show_traps()` in `trap.c`; `draw_magic_map()` in `room.c`.
+
+20.4.  Unrestricted Navigation
+
+   While `wizard == 1`:
+
+   a)  Descend ('>'):  `drop_check()` always returns 1 regardless of
+       whether the player is standing on a STAIRS tile.  The player
+       MAY descend from any floor cell.
+       Source: `drop_check()` in `level.c`.
+
+   b)  Ascend ('<'):   `check_up()` skips both the stairs-presence
+       check and the Amulet-of-Yendor requirement.  The player MAY
+       ascend from any floor cell at any depth, including level 1
+       which triggers the victory condition.
+       Source: `check_up()` in `level.c`.
+
+20.5.  Combat Modifiers
+
+   While `wizard == 1` the following modifiers apply to every combat
+   calculation for the duration of the run:
+
+   Player attacking (rogue_hit):
+   • Hit chance is DOUBLED  (hit_chance × 2, then compared with
+     rand_percent).
+   • Damage dealt is TRIPLED (damage × 3).
+   Source: `rogue_hit()` in `hit.c`.
+
+   Monster attacking (mon_hit):
+   • Hit chance is HALVED   (hit_chance / 2).
+   • Damage dealt is reduced to ONE-THIRD (damage / 3).
+   Source: `mon_hit()` in `hit.c`.
+
+20.6.  Leveling HP Gain
+
+   When the player gains an experience level while `wizard == 1`, the
+   `hp_raise()` function returns the fixed value 10 instead of the
+   normal `get_rand(3, 10)`.  The player always gains exactly 10 maximum
+   HP per level-up in wizard mode.
+
+   Source: `hp_raise()` in `level.c`.
+
+20.7.  Inventory Identification
+
+   While `wizard == 1`, `get_desc()` treats every item as fully
+   identified regardless of its actual `id_status`:
+   • Scrolls and potions show their real name.
+   • Wands show their real name AND the current charge count in
+     brackets (e.g., "wand of slow monster[3]").
+   • Rings show their real name AND the modifier value for Dexterity /
+     Add Strength rings (e.g., "+2 ring of add strength").
+   • Armor and weapon enchantments are always shown.
+
+   Source: `get_desc()` in `inventory.c` (wizard jump-to-ID branch).
+
+20.8.  Ring Diagnostics
+
+   When the player views their worn rings while `wizard == 1`
+   (`inv_rings()` in `ring.c`), an additional diagnostic message is
+   appended after the ring descriptions showing the current values of
+   all ring-effect counters:
+
+     "ste %d, r_r %d, e_r %d, r_t %d, s_s %d, a_s %d, reg %d,
+      r_e %d, s_i %d, m_a %d, aus %d"
+
+   (stealthy, r_rings, e_rings, r_teleport, sustain_strength,
+    add_strength, regeneration, ring_exp, r_see_invisible,
+    maintain_armor, auto_search)

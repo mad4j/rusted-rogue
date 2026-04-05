@@ -66,6 +66,18 @@ const HELP_PAGE_2: &[HelpLine] = &[
     HelpLine::Binding("L", "load"),
     HelpLine::Binding("Q/Esc", "quit"),
     HelpLine::Empty,
+    HelpLine::Section("WIZARD (Ctrl+W to toggle)"),
+    HelpLine::Binding("Ctrl+S", "reveal map"),
+    HelpLine::Binding("Ctrl+T", "show traps"),
+    HelpLine::Binding("Ctrl+O", "show objects"),
+    HelpLine::Binding("Ctrl+C", "conjure random item"),
+    HelpLine::Binding("Ctrl+M", "show monsters"),
+    HelpLine::Binding("Tab", "list level objects"),
+    HelpLine::Empty,
+];
+
+// Page 3 – terrain, items and entities (22 lines)
+const HELP_PAGE_3: &[HelpLine] = &[
     HelpLine::Section("TERRAIN"),
     HelpLine::Symbol('.', "floor"),
     HelpLine::Symbol('#', "tunnel"),
@@ -73,10 +85,6 @@ const HELP_PAGE_2: &[HelpLine] = &[
     HelpLine::Symbol('-', "horiz. wall"),
     HelpLine::Symbol('|', "vert. wall"),
     HelpLine::Symbol('>', "stairs"),
-];
-
-// Page 3 – terrain continued, items and entities (15 lines)
-const HELP_PAGE_3: &[HelpLine] = &[
     HelpLine::Symbol('^', "trap"),
     HelpLine::Empty,
     HelpLine::Section("ITEMS"),

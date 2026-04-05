@@ -296,9 +296,10 @@ fn render_status(game: &GameLoop) -> String {
     } else {
         ""
     };
+    let wizard_tag = if game.state().wizard { "  [WIZARD]" } else { "" };
     let arm = total_armor_bonus(&game.state().inventory);
     format!(
-        "Level: {}  Gold: {}  Hp: {}({})  Str: {}({})  Arm: {}  Exp: {}/{}{}",
+        "Level: {}  Gold: {}  Hp: {}({})  Str: {}({})  Arm: {}  Exp: {}/{}{}{}",
         game.state().level,
         game.state().gold,
         game.state().player_hit_points,
@@ -309,5 +310,6 @@ fn render_status(game: &GameLoop) -> String {
         game.state().player_exp_level,
         game.state().player_exp_points,
         hunger,
+        wizard_tag,
     )
 }

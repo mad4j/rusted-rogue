@@ -3,6 +3,12 @@ use crate::game_loop::GameLoop;
 use crate::inventory_items::{EquipmentSlot, InventoryEvent};
 
 pub(super) fn render_last_message(game: &GameLoop) -> String {
+    // Wizard password input takes highest priority so the player can see what they type.
+    if let Some(buf) = &game.state().wizard_password_input {
+        let stars = "*".repeat(buf.len());
+        return format!("wizard's password: {stars}");
+    }
+
     if let Some(event) = game.state().last_inventory_events.last() {
         return inventory_message(event);
     }

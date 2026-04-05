@@ -52,6 +52,27 @@ pub enum Command {
     SelectItem(char),
     /// Sent by the UI when the player cancels item selection (Escape).
     CancelItemSelect,
+    // Wizard mode commands
+    /// Toggle wizard mode (prompts for password if not yet active).
+    ToggleWizard,
+    /// Wizard: reveal the full dungeon layout on the current level.
+    WizardRevealMap,
+    /// Wizard: mark all traps on the current level as known.
+    WizardShowTraps,
+    /// Wizard: show all floor objects on the current level.
+    WizardShowObjects,
+    /// Wizard: list all level objects as an inventory overlay (Tab).
+    WizardShowLevelObjects,
+    /// Wizard: add a random item to the player's pack (Ctrl+C).
+    WizardAddItem,
+    /// Wizard: reveal all monsters on the current level.
+    WizardShowMonsters,
+    /// Wizard password input: one character typed by the player.
+    WizardPasswordChar(char),
+    /// Wizard password input: player pressed Enter to submit.
+    WizardPasswordSubmit,
+    /// Wizard password input: player pressed Escape to cancel.
+    WizardPasswordCancel,
     Noop,
     Unknown,
 }
@@ -132,6 +153,16 @@ pub struct GameState {
     pub gold: i64,
     pub turns: u64,
     pub quit_requested: bool,
+    /// True when the player has died (distinct from quitting voluntarily).
+    pub player_dead: bool,
+    /// True while the player is in wizard mode.
+    pub wizard: bool,
+    /// True once wizard mode has been activated; disqualifies the run from
+    /// the high-score table for the remainder of the session.
+    pub score_only: bool,
+    /// Non-None while the wizard-password prompt is active; holds the
+    /// characters typed so far (not displayed).
+    pub wizard_password_input: Option<String>,
     pub pending_direction: Option<Direction>,
     /// Set when a command needs the player to pick an item by letter before
     /// it can execute.  The renderer uses this to display the item overlay.
@@ -318,6 +349,36 @@ fn damage_for_strength(str: i16) -> i16 {
     }
 }
 
+/// Verify a plaintext password against the wizard cipher from the original.
+///
+/// The original `wizardize()` in `zap.c` applies `xxx()` / `xxxx()` (defined
+/// in `score.c`) to the input and compares with the 7-byte literal
+/// `"\247\104\126\272\115\243\027"`.  Reversing the cipher yields the
+/// plaintext password "bathtub".
+fn wizard_check_password(input: &str) -> bool {
+    // Reference cipher: initialise f=37, s=7, then for each byte i:
+    //   r = (f * s + 9337) % 8887; f = s; s = r; c[i] = r as u8;
+    //   transformed[i] = input[i] ^ c[i]
+    // The target after transformation is the 7 bytes below.
+    const TARGET: [u8; 7] = [0xA7, 0x44, 0x56, 0xBA, 0x4D, 0xA3, 0x17];
+    let bytes = input.as_bytes();
+    if bytes.len() != TARGET.len() {
+        return false;
+    }
+    let mut f: i64 = 37;
+    let mut s: i64 = 7;
+    for (i, &b) in bytes.iter().enumerate() {
+        let r = (f * s + 9337) % 8887;
+        f = s;
+        s = r;
+        let cipher = (r & 0xFF) as u8;
+        if b ^ cipher != TARGET[i] {
+            return false;
+        }
+    }
+    true
+}
+
 impl GameLoop {
     pub fn new(seed: i32) -> Self {
         let mut rng = GameRng::new(seed);
@@ -335,6 +396,10 @@ impl GameLoop {
                 gold: 0,
                 turns: 0,
                 quit_requested: false,
+                player_dead: false,
+                wizard: false,
+                score_only: false,
+                wizard_password_input: None,
                 pending_direction: None,
                 pending_item_action: None,
                 player_position,
@@ -494,7 +559,8 @@ impl GameLoop {
         let str_bonus = damage_for_strength(self.state.player_strength);
         let exp_bonus = (self.state.player_exp_level - 1) / 2;
         let weapon_base = total_attack_bonus(&self.state.inventory).max(1);
-        (weapon_base + str_bonus + exp_bonus).max(1)
+        let base = (weapon_base + str_bonus + exp_bonus).max(1);
+        if self.state.wizard { base * 3 } else { base }
     }
 
     fn player_armor_bonus(&self) -> i16 {
@@ -550,7 +616,12 @@ impl GameLoop {
                 {
                     self.state.player_exp_level = (self.state.player_exp_level + 1).min(21);
                     let mut lvl_rng = GameRng::new(self.state.turns as i32 ^ 0x5432_i32);
-                    let hp_gain = lvl_rng.get_rand(3, 10) as i16;
+                    // Wizard mode: fixed 10 HP per level (original hp_raise() in level.c)
+                    let hp_gain = if self.state.wizard {
+                        10
+                    } else {
+                        lvl_rng.get_rand(3, 10) as i16
+                    };
                     self.state.player_max_hit_points =
                         (self.state.player_max_hit_points + hp_gain).min(MAX_HP);
                     self.state.player_hit_points = self.state.player_max_hit_points;
@@ -1140,6 +1211,7 @@ impl GameLoop {
 
         if self.state.player_hit_points == 0 {
             self.state.quit_requested = true;
+            self.state.player_dead = true;
             self.record_high_score(persistence::RunOutcome::Defeated);
             return StepOutcome::Finished;
         }
@@ -1186,7 +1258,19 @@ impl GameLoop {
             match event {
                 CombatEvent::MonsterHitPlayer { damage, .. } => {
                     if damage > 0 {
-                        let mitigated_damage = (damage - self.player_armor_bonus()).max(1);
+                        // Wizard mode: monster hit chance is halved (50% of attacks miss)
+                        // and damage dealt is reduced to 1/3.
+                        let effective_damage = if self.state.wizard {
+                            if rng.rand_percent(50) {
+                                // Monster misses entirely in wizard mode
+                                self.state.last_turn_events.push(event);
+                                continue;
+                            }
+                            (damage / 3).max(1)
+                        } else {
+                            damage
+                        };
+                        let mitigated_damage = (effective_damage - self.player_armor_bonus()).max(1);
                         self.state.player_hit_points =
                             (self.state.player_hit_points - mitigated_damage).max(0);
                         if self.state.player_hit_points == 0 {
@@ -1290,6 +1374,7 @@ impl GameLoop {
 
         if self.state.player_hit_points == 0 {
             self.state.quit_requested = true;
+            self.state.player_dead = true;
             self.record_high_score(persistence::RunOutcome::Defeated);
             StepOutcome::Finished
         } else {
@@ -1465,6 +1550,7 @@ impl GameLoop {
                             }
                             if self.state.player_hit_points == 0 {
                                 self.state.quit_requested = true;
+                                self.state.player_dead = true;
                                 self.record_high_score(persistence::RunOutcome::Defeated);
                                 return StepOutcome::Finished;
                             }
@@ -1598,7 +1684,8 @@ impl GameLoop {
                 self.state.last_move_blocked = false;
                 let pos = self.state.player_position;
                 let on_stairs = self.current_level.stairs_position == Some(pos);
-                if on_stairs {
+                // Wizard mode: can descend from any tile (drop_check() in level.c)
+                if on_stairs || self.state.wizard {
                     self.descend_level();
                     self.advance_world_turn()
                 } else {
@@ -1610,6 +1697,167 @@ impl GameLoop {
             Command::Noop | Command::Unknown => {
                 self.state.pending_direction = None;
                 self.state.last_move_blocked = false;
+                StepOutcome::Continue
+            }
+            // ── Wizard mode commands ──────────────────────────────────────────
+            Command::ToggleWizard => {
+                if self.state.wizard {
+                    self.state.wizard = false;
+                    self.state.last_system_message =
+                        Some("not wizard anymore".to_string());
+                } else {
+                    // Activate password-entry mode
+                    self.state.wizard_password_input = Some(String::new());
+                    self.state.last_system_message =
+                        Some("wizard's password:".to_string());
+                }
+                StepOutcome::Continue
+            }
+            Command::WizardPasswordChar(ch) => {
+                if let Some(ref mut buf) = self.state.wizard_password_input {
+                    if ch == '\x08' {
+                        buf.pop();
+                    } else {
+                        buf.push(ch);
+                    }
+                }
+                StepOutcome::Continue
+            }
+            Command::WizardPasswordSubmit => {
+                let input = self.state.wizard_password_input.take();
+                if let Some(password) = input {
+                    if wizard_check_password(&password) {
+                        self.state.wizard = true;
+                        self.state.score_only = true;
+                        self.state.last_system_message =
+                            Some("Welcome, mighty wizard!".to_string());
+                    } else {
+                        self.state.last_system_message = Some("sorry".to_string());
+                    }
+                }
+                StepOutcome::Continue
+            }
+            Command::WizardPasswordCancel => {
+                self.state.wizard_password_input = None;
+                self.state.last_system_message = None;
+                StepOutcome::Continue
+            }
+            Command::WizardRevealMap => {
+                if self.state.wizard {
+                    let (rows, cols) = self.current_level.grid.dimensions();
+                    for row in 0..rows as i16 {
+                        for col in 0..cols as i16 {
+                            if let Some(flags) = self.current_level.grid.get(row, col) {
+                                if flags.intersects(
+                                    TileFlags::HORWALL
+                                        | TileFlags::VERTWALL
+                                        | TileFlags::DOOR
+                                        | TileFlags::TUNNEL
+                                        | TileFlags::FLOOR
+                                        | TileFlags::STAIRS
+                                        | TileFlags::TRAP,
+                                ) {
+                                    self.state.explored.insert(Position::new(row, col));
+                                }
+                            }
+                        }
+                    }
+                    self.state.last_system_message =
+                        Some("The dungeon layout is revealed.".to_string());
+                } else {
+                    self.state.last_system_message =
+                        Some("unknown command".to_string());
+                }
+                StepOutcome::Continue
+            }
+            Command::WizardShowTraps => {
+                if self.state.wizard {
+                    for &pos in &self.state.trap_positions {
+                        if !self.state.known_traps.contains(&pos) {
+                            self.state.known_traps.push(pos);
+                        }
+                    }
+                    self.state.last_system_message =
+                        Some("All traps revealed.".to_string());
+                } else {
+                    self.state.last_system_message =
+                        Some("unknown command".to_string());
+                }
+                StepOutcome::Continue
+            }
+            Command::WizardShowObjects => {
+                if self.state.wizard {
+                    // Reveal all floor objects by adding their positions to explored
+                    let positions: Vec<Position> =
+                        self.state.floor_items.iter().map(|fi| fi.position).collect();
+                    for pos in positions {
+                        self.state.explored.insert(pos);
+                    }
+                    self.state.last_system_message =
+                        Some("All level objects shown.".to_string());
+                } else {
+                    self.state.last_system_message =
+                        Some("unknown command".to_string());
+                }
+                StepOutcome::Continue
+            }
+            Command::WizardShowLevelObjects => {
+                if self.state.wizard {
+                    // Matches original Tab → inventory(&level_objects, ALL_OBJECTS):
+                    // just reveal all floor item positions so they appear on the map.
+                    let positions: Vec<Position> =
+                        self.state.floor_items.iter().map(|fi| fi.position).collect();
+                    for pos in positions {
+                        self.state.explored.insert(pos);
+                    }
+                    self.state.last_system_message =
+                        Some(format!("{} object(s) on this level.", self.state.floor_items.len()));
+                } else {
+                    self.state.last_system_message =
+                        Some("unknown command".to_string());
+                }
+                StepOutcome::Continue
+            }
+            Command::WizardAddItem => {
+                if self.state.wizard {
+                    use crate::inventory_items::{next_avail_ichar, MAX_PACK_ITEMS};
+                    if self.state.inventory.len() >= MAX_PACK_ITEMS {
+                        self.state.last_system_message = Some("Pack full.".to_string());
+                    } else {
+                        let mut rng = GameRng::new(self.state.turns as i32 ^ 0xCA11_i32);
+                        let item = gr_floor_item(&mut rng);
+                        let name = item.name;
+                        let ichar = next_avail_ichar(&self.state.inventory);
+                        self.state.inventory.push(InventoryEntry {
+                            id: self.state.next_item_id,
+                            item,
+                            equipped_slot: None,
+                            ichar,
+                            quantity: 1,
+                        });
+                        self.state.next_item_id += 1;
+                        self.state.last_system_message =
+                            Some(format!("Wizard conjured: {name}."));
+                    }
+                } else {
+                    self.state.last_system_message = Some("unknown command".to_string());
+                }
+                StepOutcome::Continue
+            }
+            Command::WizardShowMonsters => {
+                if self.state.wizard {
+                    // Reveal all monster positions by adding them to explored
+                    let positions: Vec<Position> =
+                        self.state.monsters.iter().map(|m| m.position).collect();
+                    for pos in positions {
+                        self.state.explored.insert(pos);
+                    }
+                    self.state.last_system_message =
+                        Some("All monsters revealed.".to_string());
+                } else {
+                    self.state.last_system_message =
+                        Some("unknown command".to_string());
+                }
                 StepOutcome::Continue
             }
         }

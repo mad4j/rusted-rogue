@@ -120,6 +120,8 @@ struct GameStateSnapshot {
     #[serde(default)]
     party_counter: i16,
     #[serde(default)]
+    score_only: bool,
+    #[serde(default)]
     explored: Vec<PositionSnapshot>,
 }
 
@@ -552,6 +554,7 @@ impl GameStateSnapshot {
             last_move_blocked: state.last_move_blocked,
             last_system_message: state.last_system_message.clone(),
             party_counter: state.party_counter,
+            score_only: state.score_only,
             explored: state
                 .explored
                 .iter()
@@ -638,6 +641,10 @@ impl GameStateSnapshot {
             last_system_message: self.last_system_message,
             party_counter: self.party_counter,
             pending_item_action: None,
+            wizard: false,
+            score_only: self.score_only,
+            wizard_password_input: None,
+            player_dead: false,
             explored: self
                 .explored
                 .into_iter()
