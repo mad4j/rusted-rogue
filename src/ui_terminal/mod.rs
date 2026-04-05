@@ -230,9 +230,9 @@ fn render_help_page(frame: &mut canvas::Frame, page: usize) {
 
     let total = HELP_PAGES.len();
 
-    frame.fill_text(cell_text("RUSTED ROGUE  -  KEY BINDINGS", DCOLS / 2 - 14, 0, GOLD));
+    frame.fill_text(cell_text("RUSTED ROGUE  -  HELP", DCOLS / 2 - 10, 0, GOLD));
     let indicator = format!("-- page {} of {} --", page + 1, total);
-    frame.fill_text(cell_text(indicator, DCOLS / 2 - 9, 1, DIM));
+    frame.fill_text(cell_text(indicator, DCOLS / 2 - 8, 1, DIM));
 
     for (i, line) in HELP_PAGES[page].iter().enumerate() {
         let row = i + 3;
@@ -240,9 +240,31 @@ fn render_help_page(frame: &mut canvas::Frame, page: usize) {
             HelpLine::Section(text) => {
                 frame.fill_text(cell_text(*text, 2, row, CYAN));
             }
-            HelpLine::Binding(key, desc) => {
-                frame.fill_text(cell_text(*key, 4, row, YELLOW));
-                frame.fill_text(cell_text(*desc, 26, row, WHITE));
+            HelpLine::Section2(left, right) => {
+                frame.fill_text(cell_text(*left, 2, row, CYAN));
+                if !right.is_empty() {
+                    frame.fill_text(cell_text(*right, 40, row, CYAN));
+                }
+            }
+            HelpLine::Binding2(key1, desc1, key2, desc2) => {
+                if !key1.is_empty() {
+                    frame.fill_text(cell_text(*key1, 2, row, YELLOW));
+                    frame.fill_text(cell_text(*desc1, 17, row, WHITE));
+                }
+                if !key2.is_empty() {
+                    frame.fill_text(cell_text(*key2, 40, row, YELLOW));
+                    frame.fill_text(cell_text(*desc2, 43, row, WHITE));
+                }
+            }
+            HelpLine::Symbol(ch, desc) => {
+                frame.fill_text(cell_text(ch.to_string(), 4, row, cell_color(*ch)));
+                frame.fill_text(cell_text(*desc, 8, row, WHITE));
+            }
+            HelpLine::Symbol2(ch1, desc1, ch2, desc2) => {
+                frame.fill_text(cell_text(ch1.to_string(), 4, row, cell_color(*ch1)));
+                frame.fill_text(cell_text(*desc1, 8, row, WHITE));
+                frame.fill_text(cell_text(ch2.to_string(), 44, row, cell_color(*ch2)));
+                frame.fill_text(cell_text(*desc2, 47, row, WHITE));
             }
             HelpLine::Empty => {}
         }
@@ -283,55 +305,51 @@ fn key_to_command(key: &Key) -> Option<Command> {
 #[derive(Clone, Copy)]
 enum HelpLine {
     Section(&'static str),
-    Binding(&'static str, &'static str),
+    Section2(&'static str, &'static str),
+    Binding2(&'static str, &'static str, &'static str, &'static str),
+    Symbol(char, &'static str),
+    Symbol2(char, &'static str, char, &'static str),
     Empty,
 }
 
+// Page 1: all key bindings in a 2-column layout
+// left col: key at 2, desc at 17  |  right col: key at 40, desc at 43
 const HELP_PAGE_1: &[HelpLine] = &[
-    HelpLine::Section("Movement"),
-    HelpLine::Binding("h / ArrowLeft",  "move left"),
-    HelpLine::Binding("j / ArrowDown",  "move down"),
-    HelpLine::Binding("k / ArrowUp",    "move up"),
-    HelpLine::Binding("l / ArrowRight", "move right"),
+    HelpLine::Section2("Movement",       "Actions"),
+    HelpLine::Binding2("h / ArrowLeft",  "left",          ",",  "pick up"),
+    HelpLine::Binding2("l / ArrowRight", "right",         "d",  "drop"),
+    HelpLine::Binding2("k / ArrowUp",    "up",            "e",  "eat"),
+    HelpLine::Binding2("j / ArrowDown",  "down",          "q",  "quaff"),
+    HelpLine::Binding2("y",              "up-left",       "r",  "read scroll"),
+    HelpLine::Binding2("u",              "up-right",      "z",  "zap wand"),
+    HelpLine::Binding2("b",              "down-left",     "t",  "throw"),
+    HelpLine::Binding2("n",              "down-right",    "w",  "wield weapon"),
+    HelpLine::Binding2("H / J / K / L", "run straight",  "W",  "wear armor"),
+    HelpLine::Binding2("Y / U / B / N", "run diagonal",  "T",  "take off armor"),
+    HelpLine::Binding2("",               "",              "P",  "put on ring"),
+    HelpLine::Binding2("",               "",              "R",  "remove ring"),
     HelpLine::Empty,
-    HelpLine::Section("Diagonal Movement"),
-    HelpLine::Binding("y", "move up-left"),
-    HelpLine::Binding("u", "move up-right"),
-    HelpLine::Binding("b", "move down-left"),
-    HelpLine::Binding("n", "move down-right"),
-    HelpLine::Empty,
-    HelpLine::Section("Running  (uppercase)"),
-    HelpLine::Binding("H / J / K / L", "run in cardinal direction"),
-    HelpLine::Binding("Y / U / B / N", "run in diagonal direction"),
+    HelpLine::Section2("Game",           ""),
+    HelpLine::Binding2(".",              "rest",          "S",  "save"),
+    HelpLine::Binding2(">",              "descend",       "L",  "load"),
+    HelpLine::Binding2("^",              "ident. trap",   "?",  "this help"),
+    HelpLine::Binding2("Q / Esc",        "quit",          "",   ""),
 ];
 
+// Page 2: map symbols with actual game colours
 const HELP_PAGE_2: &[HelpLine] = &[
-    HelpLine::Section("Items"),
-    HelpLine::Binding(",", "pick up item"),
-    HelpLine::Binding("d", "drop item"),
-    HelpLine::Binding("e", "eat food"),
-    HelpLine::Binding("q", "quaff potion"),
-    HelpLine::Binding("r", "read scroll"),
-    HelpLine::Binding("z", "zap wand"),
-    HelpLine::Binding("t", "throw item"),
+    HelpLine::Section2("Terrain",        "Items"),
+    HelpLine::Symbol2('.', "floor",              ')', "weapon"),
+    HelpLine::Symbol2('#', "tunnel / passage",   ']', "armor"),
+    HelpLine::Symbol2('+', "door",               '!', "potion"),
+    HelpLine::Symbol2('-', "horiz. wall",         '?', "scroll"),
+    HelpLine::Symbol2('|', "vert. wall",          '/', "wand"),
+    HelpLine::Symbol2('>', "stairs down",         '=', "ring"),
+    HelpLine::Symbol2('^', "trap",               '%', "food"),
     HelpLine::Empty,
-    HelpLine::Section("Equipment"),
-    HelpLine::Binding("w", "wield weapon"),
-    HelpLine::Binding("W", "wear armor"),
-    HelpLine::Binding("T", "take off armor"),
-    HelpLine::Binding("P", "put on ring"),
-    HelpLine::Binding("R", "remove ring"),
-    HelpLine::Empty,
-    HelpLine::Section("Other"),
-    HelpLine::Binding(".", "rest one turn"),
-    HelpLine::Binding(">", "descend stairs"),
-    HelpLine::Binding("^", "identify trap"),
-    HelpLine::Binding("?", "show this help screen"),
-    HelpLine::Empty,
-    HelpLine::Section("Game"),
-    HelpLine::Binding("S", "save game"),
-    HelpLine::Binding("L", "load game"),
-    HelpLine::Binding("Q", "quit"),
+    HelpLine::Section("Entities"),
+    HelpLine::Symbol('@', "you (player)"),
+    HelpLine::Symbol('k', "monster  (a-z / A-Z)"),
 ];
 
 const HELP_PAGES: &[&[HelpLine]] = &[HELP_PAGE_1, HELP_PAGE_2];
