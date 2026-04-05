@@ -21,3 +21,4 @@ proptest = "1"
 [target.'cfg(windows)'.build-dependencies]
 ico = "0.3"
 winresource = "0.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
