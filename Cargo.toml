@@ -22,3 +22,10 @@ proptest = "1"
 ico = "0.3"
 winresource = "0.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
+
+[profile.release]
+opt-level     = "z"      # ottimizza per dimensione (invece di velocità)
+lto           = true     # Link-Time Optimization: rimuove codice morto tra crate
+codegen-units = 1        # unità singola: LTO più aggressivo
+strip         = true     # rimuove simboli di debug dal binario
+panic         = "abort"  # panic senza stack unwinding (~10-20 kB risparmiati)

@@ -1,9 +1,35 @@
 use std::collections::HashSet;
 use crate::core_types::Position;
+use crate::inventory_items::GoldPile;
 use crate::rng::GameRng;
 use crate::world_gen::GeneratedLevel;
 use super::types::{MonsterKind, SpecialHit, StatusEffectEvent, CombatEvent};
 use super::monster::Monster;
+
+/// Returns the position of a gold pile in the same room as `monster`, if any
+/// is reachable and not currently occupied by another monster.
+/// Implements the `gold_at()` + room-scan from the original `seek_gold()` in `spec_hit.c`.
+fn seek_gold_pos(
+    monster: &Monster,
+    level: &GeneratedLevel,
+    floor_gold: &[GoldPile],
+    occupied_positions: &HashSet<Position>,
+) -> Option<Position> {
+    let room = level
+        .rooms
+        .iter()
+        .find(|r| r.contains(monster.position.row, monster.position.col))?;
+    floor_gold
+        .iter()
+        .find(|g| {
+            g.position.row > room.top_row
+                && g.position.row < room.bottom_row
+                && g.position.col > room.left_col
+                && g.position.col < room.right_col
+                && !occupied_positions.contains(&g.position)
+        })
+        .map(|g| g.position)
+}
 
 /// Roll damage for a `"NdD"` or `"NdD/NdD"` damage string.
 /// Each `/`-separated component rolls N dice with D sides and sums them.
@@ -33,6 +59,8 @@ pub fn attack_monster(
         .position(|monster| monster.position == target_position)?;
 
     let monster = &mut monsters[index];
+    // Original check_gold_seeker(): clear SEEKS_GOLD whenever the player attacks.
+    monster.seeks_gold = false;
     monster.hit_points -= damage;
 
     let kill_exp = monster.kill_exp;
@@ -55,6 +83,7 @@ pub fn tick_monsters(
     monsters: &mut [Monster],
     level: &GeneratedLevel,
     player_position: Position,
+    floor_gold: &[GoldPile],
     rng: &mut GameRng,
 ) -> Vec<CombatEvent> {
     let mut occupied_positions: HashSet<Position> =
@@ -65,9 +94,13 @@ pub fn tick_monsters(
         let previous_position = monster.position;
         occupied_positions.remove(&previous_position);
 
-        match next_monster_action(monster, player_position, level, &occupied_positions, rng) {
+        match next_monster_action(monster, player_position, level, floor_gold, &occupied_positions, rng) {
             MonsterAction::Move(next_position) => {
                 monster.position = next_position;
+                // Clear SEEKS_GOLD when the monster reaches a gold tile.
+                if monster.seeks_gold && floor_gold.iter().any(|g| g.position == next_position) {
+                    monster.seeks_gold = false;
+                }
                 occupied_positions.insert(next_position);
             }
             MonsterAction::AttackPlayer => {
@@ -138,6 +171,7 @@ fn next_monster_action(
     monster: &Monster,
     player_position: Position,
     level: &GeneratedLevel,
+    floor_gold: &[GoldPile],
     occupied_positions: &HashSet<Position>,
     rng: &mut GameRng,
 ) -> MonsterAction {
@@ -179,6 +213,32 @@ fn next_monster_action(
 
         if !occupied_positions.contains(&candidate) {
             return MonsterAction::Move(candidate);
+        }
+    }
+
+    // ── SEEKS_GOLD: navigate toward the nearest gold pile in the same room ──
+    // Mirrors seek_gold() in spec_hit.c: scan room interior, step toward gold using
+    // normal walkability (CAN_FLIT simplification already standard in this port).
+    if monster.seeks_gold {
+        if let Some(gold_pos) = seek_gold_pos(monster, level, floor_gold, occupied_positions) {
+            let gr = (gold_pos.row - monster.position.row).signum();
+            let gc = (gold_pos.col - monster.position.col).signum();
+            let gold_candidates = [
+                Position::new(monster.position.row + gr, monster.position.col + gc),
+                Position::new(monster.position.row + gr, monster.position.col),
+                Position::new(monster.position.row, monster.position.col + gc),
+            ];
+            for candidate in gold_candidates {
+                if candidate == monster.position {
+                    continue;
+                }
+                if !level.grid.is_walkable(candidate.row, candidate.col) {
+                    continue;
+                }
+                if !occupied_positions.contains(&candidate) {
+                    return MonsterAction::Move(candidate);
+                }
+            }
         }
     }
 

@@ -8,8 +8,13 @@ use crate::core_types::{EXP_LEVELS, FOOD_FAINT, FOOD_HUNGRY, FOOD_WEAK, INIT_FOO
 use crate::inventory_items::{
     apply_item_effects, drop_by_ichar, equip_by_ichar, gr_floor_item, pick_up_item,
     remove_item_by_ichar, total_armor_bonus, total_attack_bonus, unequip_by_ichar, EquipmentSlot,
-    FloorItem, InventoryEntry, InventoryEvent, InventoryItem, ItemCategory,
+    FloorItem, GoldPile, InventoryEntry, InventoryEvent, InventoryItem, ItemCategory,
 };
+
+/// Probability (%) that a regular room spawns a gold pile — from rogue.h GOLD_PERCENT.
+const GOLD_PERCENT: i32 = 46;
+/// Maximum gold a player can carry — from rogue.h MAX_GOLD.
+const MAX_GOLD: i64 = 900_000;
 use crate::persistence;
 use crate::rng::GameRng;
 use crate::world_gen::{generate_level_with_depth, DungeonGrid, GeneratedLevel};
@@ -184,6 +189,7 @@ pub struct GameState {
     pub last_turn_events: Vec<CombatEvent>,
     pub inventory: Vec<InventoryEntry>,
     pub floor_items: Vec<FloorItem>,
+    pub floor_gold: Vec<GoldPile>,
     pub trap_positions: Vec<Position>,
     pub trap_types: Vec<TrapKind>,
     pub known_traps: Vec<Position>,
@@ -273,6 +279,54 @@ fn place_floor_items(level: &GeneratedLevel, rng: &mut GameRng, _depth: i16) -> 
         items.push(FloorItem { item: gr_floor_item(rng), position: pos });
     }
     items
+}
+
+/// Place gold piles in rooms for a newly-generated level.
+/// Matches original put_gold() / plant_gold() in object.c.
+///
+/// Each regular room gets a pile with probability GOLD_PERCENT (46%).
+/// Maze rooms always get a pile worth 50% extra.
+/// Quantity: rand(2*depth, 16*depth); +50% in maze rooms.
+fn put_gold(level: &GeneratedLevel, rng: &mut GameRng, depth: i16) -> Vec<GoldPile> {
+    let mut piles: Vec<GoldPile> = Vec::new();
+    for room in &level.rooms {
+        // A maze room's interior tiles are TUNNEL (not FLOOR). Check the cell
+        // one step inside the top-left corner to distinguish room types.
+        let is_maze = level
+            .grid
+            .get(room.top_row + 1, room.left_col + 1)
+            .map_or(true, |f| !f.contains(TileFlags::FLOOR));
+
+        if !is_maze && !rng.rand_percent(GOLD_PERCENT) {
+            continue;
+        }
+
+        // Up to 50 attempts to find a walkable, unoccupied interior tile.
+        for _ in 0..50 {
+            let row =
+                rng.get_rand(room.top_row as i32 + 1, room.bottom_row as i32 - 1) as i16;
+            let col =
+                rng.get_rand(room.left_col as i32 + 1, room.right_col as i32 - 1) as i16;
+            let Some(flags) = level.grid.get(row, col) else { continue };
+            if !flags.contains(TileFlags::FLOOR) && !flags.contains(TileFlags::TUNNEL) {
+                continue;
+            }
+            if flags.contains(TileFlags::STAIRS) {
+                continue;
+            }
+            let pos = Position::new(row, col);
+            if piles.iter().any(|g| g.position == pos) {
+                continue;
+            }
+            let mut quantity = rng.get_rand(2 * depth as i32, 16 * depth as i32) as i64;
+            if is_maze {
+                quantity += quantity / 2;
+            }
+            piles.push(GoldPile { position: pos, quantity });
+            break;
+        }
+    }
+    piles
 }
 
 /// Place hidden traps for a newly-generated level.
@@ -387,6 +441,7 @@ impl GameLoop {
         let player_position = current_level.spawn_position();
         let monsters = spawn_basic_monsters(&current_level, &mut rng, player_position, 1);
         let floor_items = place_floor_items(&current_level, &mut rng, 1);
+        let floor_gold = put_gold(&current_level, &mut rng, 1);
         let (trap_positions, trap_types) = place_traps(&current_level, &mut rng, 1);
         let arrows_count = rng.get_rand(25, 35) as u16;
 
@@ -456,6 +511,7 @@ impl GameLoop {
                     },
                 ],
                 floor_items,
+                floor_gold,
                 trap_positions,
                 trap_types,
                 known_traps: Vec::new(),
@@ -630,13 +686,19 @@ impl GameLoop {
                         self.state.player_exp_level
                     ));
                 }
-                // Monster may drop an item on death
+                // Monster may drop an item on death.
+                // Leprechaun (STEALS_GOLD) always coughs up a gold pile
+                // instead of a regular item (original cough_up() in spec_hit.c).
                 let mut drop_rng = GameRng::new(
                     self.state.turns as i32
                         ^ kill_pos.row as i32
                         ^ 0x4321_i32,
                 );
-                if drop_rng.rand_percent(monster_kind.drop_percent()) {
+                if monster_kind == MonsterKind::Leprechaun {
+                    let lvl = self.state.level as i32;
+                    let qty = drop_rng.get_rand(lvl * 15, lvl * 30) as i64;
+                    self.state.floor_gold.push(GoldPile { position: kill_pos, quantity: qty });
+                } else if drop_rng.rand_percent(monster_kind.drop_percent()) {
                     let dropped = gr_floor_item(&mut drop_rng);
                     self.state
                         .floor_items
@@ -1118,6 +1180,11 @@ impl GameLoop {
     }
 
     fn record_high_score(&mut self, outcome: persistence::RunOutcome) {
+        // Original killed_by(): gold = (gold * 9) / 10 before recording score.
+        // Not applied on voluntary quit.
+        if outcome == persistence::RunOutcome::Defeated {
+            self.state.gold = self.state.gold * 9 / 10;
+        }
         let score = persistence::compute_score(self);
         let total_entries = persistence::load_high_scores()
             .map(|scores| scores.len())
@@ -1195,6 +1262,7 @@ impl GameLoop {
                                 &mut self.state.monsters,
                                 &self.current_level,
                                 self.state.player_position,
+                                &self.state.floor_gold,
                                 &mut rng,
                             );
                         }
@@ -1251,6 +1319,7 @@ impl GameLoop {
             &mut self.state.monsters,
             &self.current_level,
             self.state.player_position,
+            &self.state.floor_gold,
             &mut rng,
         );
 
@@ -1279,7 +1348,7 @@ impl GameLoop {
                     }
                     // damage == 0 means attack causes only a side-effect (e.g. Aquator)
                 }
-                CombatEvent::MonsterAppliedEffect { effect, .. } => match effect {
+                CombatEvent::MonsterAppliedEffect { effect, position, .. } => match effect {
                     StatusEffectEvent::Frozen { turns } => {
                         // Original: 12% immunity from freezing
                         if !rng.rand_percent(12) && self.state.frozen_turns == 0 {
@@ -1308,10 +1377,18 @@ impl GameLoop {
                         }
                     }
                     StatusEffectEvent::GoldStolen => {
-                        if self.state.gold > 0 {
-                            let stolen = (self.state.level as i64 * 15).min(self.state.gold);
+                        // Original steal_gold(): 10% immunity; rand(level*10, level*30) stolen;
+                        // leprechaun disappears immediately after theft.
+                        if self.state.gold > 0 && !rng.rand_percent(10) {
+                            let lvl = self.state.level as i32;
+                            let amount = rng.get_rand(lvl * 10, lvl * 30) as i64;
+                            let stolen = amount.min(self.state.gold);
                             self.state.gold -= stolen;
+                            self.state.last_system_message =
+                                Some("Your purse feels lighter.".to_string());
                         }
+                        // Leprechaun disappears (disappear() in original) regardless.
+                        self.state.monsters.retain(|m| m.position != position);
                     }
                     StatusEffectEvent::ItemStolen => {
                         // Remove the first non-equipped pack item
@@ -1392,12 +1469,14 @@ impl GameLoop {
         let player_position = new_level.spawn_position();
         let monsters = spawn_basic_monsters(&new_level, &mut rng, player_position, new_depth);
         let floor_items = place_floor_items(&new_level, &mut rng, new_depth);
+        let floor_gold = put_gold(&new_level, &mut rng, new_depth);
         let (trap_positions, trap_types) = place_traps(&new_level, &mut rng, new_depth);
 
         self.state.level = new_depth;
         self.state.player_position = player_position;
         self.state.monsters = monsters;
         self.state.floor_items = floor_items;
+        self.state.floor_gold = floor_gold;
         self.state.trap_positions = trap_positions;
         self.state.trap_types = trap_types;
         self.state.known_traps.clear();
@@ -1477,7 +1556,22 @@ impl GameLoop {
                     direction
                 };
                 self.state.pending_direction = Some(actual_direction);
-                match self.try_move_player(actual_direction) {
+                let player_action = self.try_move_player(actual_direction);
+                // Auto-collect gold when the player actually steps onto a new tile.
+                // Matches original pack.c pick_up() GOLD branch in one_move_rogue().
+                if matches!(&player_action, PlayerAction::Moved) {
+                    let player_pos = self.state.player_position;
+                    if let Some(idx) =
+                        self.state.floor_gold.iter().position(|g| g.position == player_pos)
+                    {
+                        let pile = self.state.floor_gold.remove(idx);
+                        let gained = pile.quantity;
+                        self.state.gold = (self.state.gold + gained).min(MAX_GOLD);
+                        self.state.last_system_message =
+                            Some(format!("{} pieces of gold.", gained));
+                    }
+                }
+                match player_action {
                     PlayerAction::Moved | PlayerAction::Attacked | PlayerAction::Held => {
                         if let Some(trap_idx) = self
                             .state

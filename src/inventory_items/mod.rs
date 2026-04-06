@@ -559,6 +559,14 @@ pub struct FloorItem {
     pub position: Position,
 }
 
+/// A pile of gold coins on the dungeon floor.  Not stored in the player's
+/// pack — collected automatically when the player steps onto the tile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GoldPile {
+    pub position: Position,
+    pub quantity: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InventoryEvent {
     PickedUp {

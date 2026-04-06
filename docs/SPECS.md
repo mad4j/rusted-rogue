@@ -1,10 +1,10 @@
                                                               
-Rusted Rogue Project                                            D. Anon
-Specification Reference                                    April 2026
+Rusted Rogue Project                                        D. Olmisani
+Specification Reference                                      April 2026
 Category: Game Specification
 
                    ROGUE: DUNGEON EXPLORATION GAME
-                      Behavioral Specification v1.0
+                    Behavioral Specification v1.0
 
 Abstract
 
@@ -583,9 +583,36 @@ Table of Contents
 
 8.8.  Gold
 
-   Gold piles ('*') are automatically collected on tile entry.  Amount
-   range: rand(2*level, 16*level) per room; 50% bonus in maze rooms.
-   The GOLD_PERCENT constant (46) sets the per-room spawn probability.
+   Gold piles ('*') are automatically collected when the player steps onto
+   their tile (no ',' key required); they are never placed in the pack.
+
+   Spawning (put_gold / plant_gold in object.c):
+   - Each room in the level is processed once.
+   - Regular rooms: 46% chance (GOLD_PERCENT) of receiving a pile.
+   - Maze rooms: always receive a pile (100% spawn chance).
+   - Quantity: rand(2 × level, 16 × level).
+   - Maze-room bonus: quantity += quantity / 2 (50% extra).
+   - Placement: up to 50 random attempts inside the room interior; the
+     tile must be FLOOR or TUNNEL and must not already hold a pile or
+     stairs.
+
+   Hard cap: MAX_GOLD = 900 000; gold is clamped on pickup.
+
+   Leprechaun interactions:
+   - STEALS_GOLD: When a Leprechaun hits the player, rand(level×10,
+     level×30) gold is stolen (10% immunity chance per hit).  The
+     Leprechaun disappears immediately after the theft (disappear() in
+     original).  Message: "Your purse feels lighter."
+   - Cough-up on kill: Killing a Leprechaun always drops a gold pile of
+     rand(level×15, level×30) at the kill position (cough_up() in
+     spec_hit.c).
+
+   Death penalty (killed_by() in score.c):
+   - On death: gold = (gold × 9) / 10 before the score is recorded.
+   - Voluntary quit does not incur the penalty.
+
+   Orc (SEEKS_GOLD): Original behaviour of navigating toward floor gold in
+   the same room is not yet implemented (see CONSISTENCY.md).
 
 8.9.  Amulet of Yendor
 
@@ -834,6 +861,10 @@ Table of Contents
    The score file holds up to 10 entries, ranked by gold amount.
    Each entry records: rank, gold, player login name, cause of death,
    and dungeon level reached.
+
+   Score = gold carried at game end.  On death the gold is reduced to
+   90% before recording (killed_by() in score.c).  On voluntary quit
+   the full gold total is recorded.
 
    Scores are stored in an obfuscated binary format to discourage
    tampering.  The file is opened with setuid-games privileges

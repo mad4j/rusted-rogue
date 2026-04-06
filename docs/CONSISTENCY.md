@@ -20,6 +20,7 @@ is to help contributors understand intentional deviations and known gaps.
 | Save / restore | ✓ Consistent | |
 | High-score file | ✓ Consistent | JSON format instead of binary |
 | Wizard mode | ✓ Consistent | See section below |
+| Orc SEEKS_GOLD | ✓ Consistent | Orc navigates toward floor gold in its room before pursuing the player; `seeks_gold` flag cleared on reaching gold or being attacked |
 
 ---
 

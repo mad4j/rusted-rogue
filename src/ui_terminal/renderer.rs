@@ -46,6 +46,7 @@ pub(super) fn cell_color(ch: char) -> Color {
         '/' => Color::from_rgb(0.39, 1.0, 0.78),
         '?' => Color::from_rgb(0.90, 0.90, 0.39),
         '%' => Color::from_rgb(0.39, 0.78, 0.39),
+        '*' => Color::from_rgb(1.0, 0.84, 0.0),
         '-' | '|' => Color::from_rgb(0.63, 0.63, 0.63),
         '.' => Color::from_rgb(0.27, 0.27, 0.35),
         '#' => Color::from_rgb(0.43, 0.31, 0.20),
@@ -240,7 +241,7 @@ impl RenderLookups {
             .map(|monster| (monster.position, monster.display_char()))
             .collect();
 
-        let floor_items = game
+        let mut floor_items: HashMap<Position, char> = game
             .state()
             .floor_items
             .iter()
@@ -257,6 +258,11 @@ impl RenderLookups {
                 (floor_item.position, ch)
             })
             .collect();
+
+        // Gold piles display as '*'.
+        for gold_pile in &game.state().floor_gold {
+            floor_items.entry(gold_pile.position).or_insert('*');
+        }
 
         let known_traps = game.state().known_traps.iter().copied().collect();
 

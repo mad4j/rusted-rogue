@@ -9,7 +9,8 @@ use crate::actors::{CombatEvent, Monster, MonsterKind, SpecialHit, StatusEffectE
 use crate::core_types::{Position, TileFlags, TrapKind, DCOLS, DROWS};
 use crate::game_loop::{Command, Direction, GameLoop, GameState};
 use crate::inventory_items::{
-    next_avail_ichar, EquipmentSlot, FloorItem, InventoryEntry, InventoryEvent, InventoryItem,
+    next_avail_ichar, EquipmentSlot, FloorItem, GoldPile, InventoryEntry, InventoryEvent,
+    InventoryItem,
 };
 use crate::world_gen::{DoorLink, DungeonGrid, GeneratedLevel, Room};
 
@@ -123,6 +124,14 @@ struct GameStateSnapshot {
     score_only: bool,
     #[serde(default)]
     explored: Vec<PositionSnapshot>,
+    #[serde(default)]
+    floor_gold: Vec<GoldPileSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GoldPileSnapshot {
+    position: PositionSnapshot,
+    quantity: i64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -139,6 +148,8 @@ struct MonsterSnapshot {
     #[serde(default)]
     stationary_damage: i16,
     special_hit: Option<String>,
+    #[serde(default)]
+    seeks_gold: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,11 +258,11 @@ pub fn default_score_path() -> PathBuf {
     }
 }
 
+/// Score = gold amount, matching original rogue score.c.
+/// The death penalty (gold × 9/10) is applied in `record_high_score` before
+/// this function is called.
 pub fn compute_score(game: &GameLoop) -> u64 {
-    let level_component = (game.state().level.max(1) as u64) * 1_000;
-    let monster_component = game.state().monsters_defeated * 250;
-    let turn_component = game.state().turns;
-    level_component + monster_component + turn_component
+    game.state().gold.max(0) as u64
 }
 
 pub fn record_score(game: &GameLoop, outcome: RunOutcome) -> io::Result<usize> {
@@ -560,6 +571,14 @@ impl GameStateSnapshot {
                 .iter()
                 .map(|p| PositionSnapshot::from_position(*p))
                 .collect(),
+            floor_gold: state
+                .floor_gold
+                .iter()
+                .map(|g| GoldPileSnapshot {
+                    position: PositionSnapshot::from_position(g.position),
+                    quantity: g.quantity,
+                })
+                .collect(),
         }
     }
 
@@ -650,6 +669,14 @@ impl GameStateSnapshot {
                 .into_iter()
                 .map(PositionSnapshot::into_position)
                 .collect(),
+            floor_gold: self
+                .floor_gold
+                .into_iter()
+                .map(|g| GoldPile {
+                    position: g.position.into_position(),
+                    quantity: g.quantity,
+                })
+                .collect(),
         })
     }
 }
@@ -661,6 +688,7 @@ impl MonsterSnapshot {
             position: PositionSnapshot::from_position(monster.position),
             hit_points: monster.hit_points,
             stationary_damage: monster.stationary_damage,
+            seeks_gold: monster.seeks_gold,
             special_hit: monster
                 .special_hit
                 .map(|hit| special_hit_to_string(hit).to_string()),
@@ -674,6 +702,7 @@ impl MonsterSnapshot {
         let mut monster = Monster::new(kind, self.position.into_position());
         monster.hit_points = self.hit_points;
         monster.stationary_damage = self.stationary_damage;
+        monster.seeks_gold = self.seeks_gold;
         if let Some(sh) = self.special_hit.as_deref().map(special_hit_from_string).transpose()? {
             monster.special_hit = Some(sh);
         }

@@ -15,6 +15,9 @@ pub struct Monster {
     pub special_hit: Option<SpecialHit>,
     /// Cumulative damage for STATIONARY monsters (VenusFlytrap): starts at 0, +1 each attack.
     pub stationary_damage: i16,
+    /// True while the monster is still pursuing a floor-gold pile (SEEKS_GOLD flag in original).
+    /// Cleared when the monster steps onto a gold tile or the player attacks it.
+    pub seeks_gold: bool,
 }
 
 impl Monster {
@@ -29,6 +32,7 @@ impl Monster {
                 kill_exp: 20,
                 special_hit: Some(SpecialHit::Rusts),
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Bat => Self {
                 kind,
@@ -39,6 +43,7 @@ impl Monster {
                 kill_exp: 2,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Centaur => Self {
                 kind,
@@ -49,6 +54,7 @@ impl Monster {
                 kill_exp: 15,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Dragon => Self {
                 kind,
@@ -59,6 +65,7 @@ impl Monster {
                 kill_exp: 5000,
                 special_hit: Some(SpecialHit::Flames),
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Emu => Self {
                 kind,
@@ -69,6 +76,7 @@ impl Monster {
                 kill_exp: 2,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::VenusFlytrap => Self {
                 kind,
@@ -79,6 +87,7 @@ impl Monster {
                 kill_exp: 91,
                 special_hit: Some(SpecialHit::Hold),
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Griffin => Self {
                 kind,
@@ -89,6 +98,7 @@ impl Monster {
                 kill_exp: 2000,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Hobgoblin => Self {
                 kind,
@@ -99,6 +109,7 @@ impl Monster {
                 kill_exp: 3,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::IceMonster => Self {
                 kind,
@@ -109,6 +120,7 @@ impl Monster {
                 kill_exp: 5,
                 special_hit: Some(SpecialHit::Freeze),
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Jabberwock => Self {
                 kind,
@@ -119,6 +131,7 @@ impl Monster {
                 kill_exp: 3000,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Kestrel => Self {
                 kind,
@@ -129,6 +142,7 @@ impl Monster {
                 kill_exp: 2,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Leprechaun => Self {
                 kind,
@@ -139,6 +153,7 @@ impl Monster {
                 kill_exp: 21,
                 special_hit: Some(SpecialHit::StealsGold),
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Medusa => Self {
                 kind,
@@ -149,6 +164,7 @@ impl Monster {
                 kill_exp: 250,
                 special_hit: Some(SpecialHit::Confuse),
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Nymph => Self {
                 kind,
@@ -159,6 +175,7 @@ impl Monster {
                 kill_exp: 39,
                 special_hit: Some(SpecialHit::StealsItem),
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Orc => Self {
                 kind,
@@ -169,6 +186,7 @@ impl Monster {
                 kill_exp: 5,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: true,
             },
             MonsterKind::Phantom => Self {
                 kind,
@@ -179,6 +197,7 @@ impl Monster {
                 kill_exp: 120,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Quagga => Self {
                 kind,
@@ -189,6 +208,7 @@ impl Monster {
                 kill_exp: 20,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Rattlesnake => Self {
                 kind,
@@ -199,6 +219,7 @@ impl Monster {
                 kill_exp: 10,
                 special_hit: Some(SpecialHit::Sting),
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Snake => Self {
                 kind,
@@ -209,6 +230,7 @@ impl Monster {
                 kill_exp: 2,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Troll => Self {
                 kind,
@@ -219,6 +241,7 @@ impl Monster {
                 kill_exp: 125,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::BlackUnicorn => Self {
                 kind,
@@ -229,6 +252,7 @@ impl Monster {
                 kill_exp: 200,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Vampire => Self {
                 kind,
@@ -239,6 +263,7 @@ impl Monster {
                 kill_exp: 350,
                 special_hit: Some(SpecialHit::DrainsLife),
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Wraith => Self {
                 kind,
@@ -249,6 +274,7 @@ impl Monster {
                 kill_exp: 55,
                 special_hit: Some(SpecialHit::DropsLevel),
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Xeroc => Self {
                 kind,
@@ -259,6 +285,7 @@ impl Monster {
                 kill_exp: 110,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Yeti => Self {
                 kind,
@@ -269,6 +296,7 @@ impl Monster {
                 kill_exp: 50,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
             MonsterKind::Zombie => Self {
                 kind,
@@ -279,6 +307,7 @@ impl Monster {
                 kill_exp: 8,
                 special_hit: None,
                 stationary_damage: 0,
+                seeks_gold: false,
             },
         }
     }
@@ -385,3 +414,4 @@ impl MonsterKind {
         }
     }
 }
+
