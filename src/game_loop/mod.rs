@@ -152,6 +152,21 @@ impl PendingItemAction {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RunStats {
+    pub monsters_defeated: u64,
+    /// Total gold ever collected (before any thefts).
+    pub gold_collected: i64,
+    /// Number of food items eaten.
+    pub food_eaten: u32,
+    /// Number of tiles the player actually moved onto.
+    pub steps_taken: u64,
+    /// Total damage dealt to monsters.
+    pub damage_dealt: u64,
+    /// Total HP recovered (passive regen + potions).
+    pub health_recovered: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameState {
     pub level: i16,
@@ -184,7 +199,7 @@ pub struct GameState {
     pub is_weak: bool,
     pub frozen_turns: u8,
     pub confused_turns: u8,
-    pub monsters_defeated: u64,
+    pub stats: RunStats,
     pub monsters: Vec<Monster>,
     pub last_turn_events: Vec<CombatEvent>,
     pub inventory: Vec<InventoryEntry>,
@@ -469,7 +484,7 @@ impl GameLoop {
                 is_weak: false,
                 frozen_turns: 0,
                 confused_turns: 0,
-                monsters_defeated: 0,
+                stats: RunStats::default(),
                 monsters,
                 last_turn_events: Vec::new(),
                 inventory: vec![
@@ -656,6 +671,10 @@ impl GameLoop {
         }
 
         if let Some(event) = attack_monster(&mut self.state.monsters, target, attack_damage) {
+            // Track total damage dealt to monsters.
+            if let CombatEvent::PlayerHitMonster { damage, .. } = event {
+                self.state.stats.damage_dealt += damage.max(0) as u64;
+            }
             if let CombatEvent::PlayerHitMonster {
                 killed: true,
                 kill_exp,
@@ -664,7 +683,7 @@ impl GameLoop {
                 ..
             } = event
             {
-                self.state.monsters_defeated += 1;
+                self.state.stats.monsters_defeated += 1;
                 self.state.player_exp_points += kill_exp as i64;
                 let next_level = self.state.player_exp_level as usize;
                 if next_level < EXP_LEVELS.len()
@@ -712,6 +731,7 @@ impl GameLoop {
 
         if self.current_level.grid.is_walkable(target.row, target.col) {
             self.state.player_position = target;
+            self.state.stats.steps_taken += 1;
             self.state.last_move_blocked = false;
             self.update_explored();
             PlayerAction::Moved
@@ -880,6 +900,7 @@ impl GameLoop {
                         "healing potion" => {
                             // Original: potion_heal(rogue.exp) — heal by exp level
                             let n = self.state.player_exp_level as i16;
+                            let old_hp = self.state.player_hit_points;
                             let new_hp = self.state.player_hit_points + n;
                             if new_hp > self.state.player_max_hit_points {
                                 if self.state.player_hit_points == self.state.player_max_hit_points {
@@ -890,11 +911,14 @@ impl GameLoop {
                             } else {
                                 self.state.player_hit_points = new_hp;
                             }
+                            self.state.stats.health_recovered +=
+                                (self.state.player_hit_points - old_hp).max(0) as u64;
                             "You feel better."
                         }
                         "potion of extra healing" => {
                             // Original: potion_heal(2 * rogue.exp)
                             let n = self.state.player_exp_level as i16 * 2;
+                            let old_hp = self.state.player_hit_points;
                             let new_hp = self.state.player_hit_points + n;
                             if new_hp > self.state.player_max_hit_points {
                                 if self.state.player_hit_points == self.state.player_max_hit_points {
@@ -905,6 +929,8 @@ impl GameLoop {
                             } else {
                                 self.state.player_hit_points = new_hp;
                             }
+                            self.state.stats.health_recovered +=
+                                (self.state.player_hit_points - old_hp).max(0) as u64;
                             "You feel much better."
                         }
                         "potion of increase strength" => "You feel stronger.",
@@ -1083,6 +1109,7 @@ impl GameLoop {
                     self.state.food_remaining = self.state.food_remaining / 3 + moves;
                     self.state.is_hungry = false;
                     self.state.is_weak = false;
+                    self.state.stats.food_eaten += 1;
                     self.state.last_system_message = Some(msg.to_string());
                     vec![InventoryEvent::Used { name: entry.item.name }]
                 })
@@ -1099,8 +1126,11 @@ impl GameLoop {
                     let direction = self.state.pending_direction.unwrap_or(Direction::Right);
                     if let Some(target) = self.first_monster_in_direction(direction) {
                         if let Some(event) = attack_monster(&mut self.state.monsters, target, 2) {
+                            if let CombatEvent::PlayerHitMonster { damage, .. } = event {
+                                self.state.stats.damage_dealt += damage.max(0) as u64;
+                            }
                             if matches!(event, CombatEvent::PlayerHitMonster { killed: true, .. }) {
-                                self.state.monsters_defeated += 1;
+                                self.state.stats.monsters_defeated += 1;
                             }
                             self.state.last_turn_events.push(event);
                             self.state.last_system_message = Some("Magic missile hits.".to_string());
@@ -1128,8 +1158,11 @@ impl GameLoop {
                         self.state.player_position.col + dcol,
                     );
                     if let Some(event) = attack_monster(&mut self.state.monsters, target, 1) {
+                        if let CombatEvent::PlayerHitMonster { damage, .. } = event {
+                            self.state.stats.damage_dealt += damage.max(0) as u64;
+                        }
                         if matches!(event, CombatEvent::PlayerHitMonster { killed: true, .. }) {
-                            self.state.monsters_defeated += 1;
+                            self.state.stats.monsters_defeated += 1;
                         }
                         self.state.last_turn_events.push(event);
                         self.state.last_system_message = Some("You throw and hit.".to_string());
@@ -1303,14 +1336,18 @@ impl GameLoop {
                 let regen_bonus: i16 = if has_regeneration { 1 } else { 0 };
                 // Alternate between +1 and +2 HP each interval
                 let base_heal: i16 = if (self.state.turns / interval) % 2 == 0 { 2 } else { 1 };
+                let old_hp = self.state.player_hit_points;
                 self.state.player_hit_points =
                     (self.state.player_hit_points + base_heal + regen_bonus)
                         .min(self.state.player_max_hit_points);
+                self.state.stats.health_recovered +=
+                    (self.state.player_hit_points - old_hp).max(0) as u64;
             } else if has_regen_ring_only(&self.state.inventory) {
                 // Regeneration ring also heals +1 HP every turn outside the interval
                 if self.state.player_hit_points < self.state.player_max_hit_points {
                     self.state.player_hit_points =
                         (self.state.player_hit_points + 1).min(self.state.player_max_hit_points);
+                    self.state.stats.health_recovered += 1;
                 }
             }
         }
@@ -1567,6 +1604,7 @@ impl GameLoop {
                         let pile = self.state.floor_gold.remove(idx);
                         let gained = pile.quantity;
                         self.state.gold = (self.state.gold + gained).min(MAX_GOLD);
+                        self.state.stats.gold_collected += gained;
                         self.state.last_system_message =
                             Some(format!("{} pieces of gold.", gained));
                     }

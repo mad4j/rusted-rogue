@@ -85,6 +85,21 @@ struct DoorLinkSnapshot {
     oth_col: i16,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct RunStatsSnapshot {
+    monsters_defeated: u64,
+    #[serde(default)]
+    gold_collected: i64,
+    #[serde(default)]
+    food_eaten: u32,
+    #[serde(default)]
+    steps_taken: u64,
+    #[serde(default)]
+    damage_dealt: u64,
+    #[serde(default)]
+    health_recovered: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct GameStateSnapshot {
     level: i16,
@@ -106,7 +121,8 @@ struct GameStateSnapshot {
     frozen_turns: u8,
     #[serde(default)]
     confused_turns: u8,
-    monsters_defeated: u64,
+    #[serde(flatten)]
+    stats: RunStatsSnapshot,
     monsters: Vec<MonsterSnapshot>,
     last_turn_events: Vec<CombatEventSnapshot>,
     inventory: Vec<InventoryEntrySnapshot>,
@@ -284,7 +300,7 @@ pub fn record_score_to_path(
         score: compute_score(game),
         level: game.state().level,
         turns: game.state().turns,
-        monsters_defeated: game.state().monsters_defeated,
+        monsters_defeated: game.state().stats.monsters_defeated,
         outcome: outcome.as_str().to_string(),
         recorded_at_unix: current_unix_seconds(),
     };
@@ -520,7 +536,14 @@ impl GameStateSnapshot {
             is_weak: state.is_weak,
             frozen_turns: state.frozen_turns,
             confused_turns: state.confused_turns,
-            monsters_defeated: state.monsters_defeated,
+            stats: RunStatsSnapshot {
+                monsters_defeated: state.stats.monsters_defeated,
+                gold_collected: state.stats.gold_collected,
+                food_eaten: state.stats.food_eaten,
+                steps_taken: state.stats.steps_taken,
+                damage_dealt: state.stats.damage_dealt,
+                health_recovered: state.stats.health_recovered,
+            },
             monsters: state
                 .monsters
                 .iter()
@@ -605,7 +628,14 @@ impl GameStateSnapshot {
             is_weak: self.is_weak,
             frozen_turns: self.frozen_turns,
             confused_turns: self.confused_turns,
-            monsters_defeated: self.monsters_defeated,
+            stats: crate::game_loop::RunStats {
+                monsters_defeated: self.stats.monsters_defeated,
+                gold_collected: self.stats.gold_collected,
+                food_eaten: self.stats.food_eaten,
+                steps_taken: self.stats.steps_taken,
+                damage_dealt: self.stats.damage_dealt,
+                health_recovered: self.stats.health_recovered,
+            },
             monsters: self
                 .monsters
                 .into_iter()

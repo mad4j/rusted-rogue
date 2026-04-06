@@ -45,7 +45,7 @@ fn run_script_mode_if_requested() -> Option<i32> {
         game.state().turns,
         game.state().player_hit_points,
         game.state().player_max_hit_points,
-        game.state().monsters_defeated,
+        game.state().stats.monsters_defeated,
         game.state().quit_requested,
         outcome,
     );

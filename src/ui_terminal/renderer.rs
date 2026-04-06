@@ -64,7 +64,7 @@ pub(super) fn cell_color(ch: char) -> Color {
 // Column at which the side panel starts (keep in sync with overlay constants)
 const PANEL_COL: usize = 52;
 
-pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inventory: bool) {
+pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inventory: bool, blink_on: bool) {
     let lookups = RenderLookups::from_game(game);
 
     let message = render_last_message(game);
@@ -91,8 +91,7 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inven
         }
     }
 
-    let status = render_status(game);
-    frame.fill_text(cell_text(status, 0, DROWS + 1, Color::from_rgb(1.0, 1.0, 0.39)));
+    render_status_bar(frame, game, blink_on);
 
     // Overlay the inventory panel when 'i' is pressed or an item action is pending.
     if show_overlay {
@@ -294,28 +293,149 @@ fn render_tile(tile: TileFlags) -> char {
     }
 }
 
-fn render_status(game: &GameLoop) -> String {
-    let hunger = if game.state().is_weak {
-        "  Weak"
-    } else if game.state().is_hungry {
-        "  Hungry"
+// Fixed-width status bar layout (80 cols):
+// Col  0: "Level:" label  Col  6: value (3)
+// Col  9: "Gold:"  label  Col 14: value (6)
+// Col 20: " Hp:"   label  Col 24: value (8, e.g. "999(999)")
+// Col 32: " Str:"  label  Col 37: value (7, e.g. "31(31) ")
+// Col 44: " Arm:"  label  Col 49: value (3)
+// Col 52: " Exp:"  label  Col 57: value (9, e.g. "21/999999")
+// Col 66-67: spacing
+// Col 68: hunger (6)  Col 74: wizard (6)
+fn render_status_bar(frame: &mut canvas::Frame, game: &GameLoop, blink_on: bool) {
+    let s = game.state();
+    let arm = total_armor_bonus(&s.inventory);
+    let row = DROWS + 1;
+    let lbl = Color::from_rgb(0.45, 0.45, 0.5);
+
+    // Level
+    frame.fill_text(cell_text("Level:", 0, row, lbl));
+    frame.fill_text(cell_text(format!("{:<3}", s.level), 6, row, Color::WHITE));
+
+    // Gold
+    frame.fill_text(cell_text("Gold:", 9, row, lbl));
+    frame.fill_text(cell_text(format!("{:<6}", s.gold), 14, row, Color::from_rgb(1.0, 0.82, 0.24)));
+
+    // Hp — blink bright-red / dark-red when ≤25% max
+    let hp_critical = s.player_hit_points * 4 <= s.player_max_hit_points;
+    let hp_color = if hp_critical {
+        if blink_on {
+            Color::from_rgb(1.0, 0.15, 0.15)  // bright red (blink phase ON)
+        } else {
+            Color::from_rgb(0.55, 0.05, 0.05) // dark red   (blink phase OFF)
+        }
     } else {
-        ""
+        Color::from_rgb(0.2, 0.9, 0.2)
     };
-    let wizard_tag = if game.state().wizard { "  [WIZARD]" } else { "" };
-    let arm = total_armor_bonus(&game.state().inventory);
-    format!(
-        "Level: {}  Gold: {}  Hp: {}({})  Str: {}({})  Arm: {}  Exp: {}/{}{}{}",
-        game.state().level,
-        game.state().gold,
-        game.state().player_hit_points,
-        game.state().player_max_hit_points,
-        game.state().player_strength,
-        game.state().player_max_strength,
-        arm,
-        game.state().player_exp_level,
-        game.state().player_exp_points,
-        hunger,
-        wizard_tag,
-    )
+    frame.fill_text(cell_text(" Hp:", 20, row, lbl));
+    let hp_str = format!("{}({})", s.player_hit_points, s.player_max_hit_points);
+    frame.fill_text(cell_text(format!("{:<8}", hp_str), 24, row, hp_color));
+
+    // Str
+    frame.fill_text(cell_text(" Str:", 32, row, lbl));
+    let str_str = format!("{}({})", s.player_strength, s.player_max_strength);
+    frame.fill_text(cell_text(format!("{:<7}", str_str), 37, row, Color::from_rgb(0.39, 0.78, 1.0)));
+
+    // Arm
+    frame.fill_text(cell_text(" Arm:", 44, row, lbl));
+    frame.fill_text(cell_text(format!("{:<3}", arm), 49, row, Color::from_rgb(0.39, 1.0, 0.78)));
+
+    // Exp
+    frame.fill_text(cell_text(" Exp:", 52, row, lbl));
+    let exp_str = format!("{}/{}", s.player_exp_level, s.player_exp_points);
+    frame.fill_text(cell_text(format!("{:<9}", exp_str), 57, row, Color::from_rgb(0.78, 0.39, 1.0)));
+
+    // Hunger — Weak blinks red/dark-red; Hungry stays orange
+    if s.is_weak || s.is_hungry {
+        let hunger_color = if s.is_weak {
+            if blink_on {
+                Color::from_rgb(1.0, 0.15, 0.15)
+            } else {
+                Color::from_rgb(0.55, 0.05, 0.05)
+            }
+        } else {
+            // Hungry: static orange
+            Color::from_rgb(1.0, 0.55, 0.1)
+        };
+        let hunger_str = if s.is_weak { "Weak  " } else { "Hungry" };
+        frame.fill_text(cell_text(hunger_str, 68, row, hunger_color));
+    }
+
+    // Wizard tag (col 74, 6 chars)
+    if s.wizard {
+        frame.fill_text(cell_text("[WIZ] ", 74, row, Color::from_rgb(0.2, 1.0, 0.4)));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Stats screen overlay
+// ---------------------------------------------------------------------------
+
+/// Render the end-of-run statistics on a black background.
+pub(super) fn render_stats(frame: &mut canvas::Frame, game: &GameLoop) {
+    use iced::Size;
+
+    let s = game.state();
+
+    // Dark background fill
+    frame.fill(
+        &canvas::Path::rectangle(iced::Point::ORIGIN, frame.size()),
+        Color::BLACK,
+    );
+
+    let title_color  = Color::from_rgb(1.0, 0.82, 0.24);
+    let label_color  = Color::from_rgb(0.6,  0.6,  0.7);
+    let value_color  = Color::WHITE;
+    let footer_color = Color::from_rgb(0.45, 0.45, 0.5);
+
+    // Draw a simple centered box (column 20..60, row 6..20)
+    let box_left  = 20usize;
+    let box_right = 60usize;
+    let box_top   = 6usize;
+    let box_bot   = 20usize;
+
+    // Fill box background
+    let px_x = box_left  as f32 * super::CELL_W + super::PADDING;
+    let px_y = box_top   as f32 * super::CELL_H + super::PADDING;
+    let px_w = (box_right - box_left) as f32 * super::CELL_W;
+    let px_h = (box_bot   - box_top)  as f32 * super::CELL_H;
+    frame.fill(
+        &canvas::Path::rectangle(iced::Point::new(px_x, px_y), Size::new(px_w, px_h)),
+        Color::from_rgba(0.08, 0.08, 0.12, 1.0),
+    );
+
+    // Title
+    let title = "=  Run Statistics  =";
+    let title_col = box_left + (box_right - box_left).saturating_sub(title.len()) / 2;
+    frame.fill_text(cell_text(title, title_col, box_top + 1, title_color));
+
+    // Separator
+    let sep: String = "-".repeat(box_right - box_left - 2);
+    frame.fill_text(cell_text(sep.clone(), box_left + 1, box_top + 2, label_color));
+
+    // Stat rows: (label, value string)
+    let stats: &[(&str, String)] = &[
+        ("Gold collected :",  format!("{}", s.stats.gold_collected)),
+        ("Food eaten     :",  format!("{}", s.stats.food_eaten)),
+        ("Time (turns)   :",  format!("{}", s.turns)),
+        ("Steps taken    :",  format!("{}", s.stats.steps_taken)),
+        ("Damage dealt   :",  format!("{}", s.stats.damage_dealt)),
+        ("Health recovered:", format!("{}", s.stats.health_recovered)),
+    ];
+
+    let label_col = box_left + 2;
+    let value_col = box_left + 22;
+    for (i, (label, value)) in stats.iter().enumerate() {
+        let row = box_top + 4 + i;
+        frame.fill_text(cell_text(*label, label_col, row, label_color));
+        frame.fill_text(cell_text(value.as_str(), value_col, row, value_color));
+    }
+
+    // Separator
+    frame.fill_text(cell_text(sep, box_left + 1, box_top + 11, label_color));
+
+    // Footer
+    let footer = "Press any key to continue...";
+    let footer_col = box_left + (box_right - box_left).saturating_sub(footer.len()) / 2;
+    frame.fill_text(cell_text(footer, footer_col, box_top + 12, footer_color));
 }
