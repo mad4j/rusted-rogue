@@ -54,17 +54,13 @@ fn combat_message(event: &CombatEvent) -> String {
     match event {
         CombatEvent::PlayerHitMonster {
             monster_kind,
-            damage,
             killed,
             ..
         } => {
             if *killed {
-                format!(
-                    "You hit {} for {damage} and kill it.",
-                    monster_name(*monster_kind)
-                )
+                format!("You kill the {}!", monster_name(*monster_kind))
             } else {
-                format!("You hit {} for {damage}.", monster_name(*monster_kind))
+                format!("You hit the {}.", monster_name(*monster_kind))
             }
         }
         CombatEvent::PlayerMissedMonster { monster_kind, .. } => {
@@ -72,9 +68,8 @@ fn combat_message(event: &CombatEvent) -> String {
         }
         CombatEvent::MonsterHitPlayer {
             monster_kind,
-            damage,
             ..
-        } => format!("{} hits you for {damage}.", monster_name(*monster_kind)),
+        } => format!("The {} hits you.", monster_name(*monster_kind)),
         CombatEvent::MonsterMissedPlayer { monster_kind, .. } => {
             format!("The {} misses.", monster_name(*monster_kind))
         }
