@@ -19,9 +19,7 @@ serde_json = "1"
 proptest = "1"
 
 [target.'cfg(windows)'.build-dependencies]
-ico = "0.3"
 winresource = "0.1"
-image = { version = "0.25", default-features = false, features = ["png"] }
 
 [profile.release]
 opt-level     = "z"      # ottimizza per dimensione (invece di velocità)
