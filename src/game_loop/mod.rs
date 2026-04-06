@@ -1594,8 +1594,9 @@ impl GameLoop {
                 };
                 self.state.pending_direction = Some(actual_direction);
                 let player_action = self.try_move_player(actual_direction);
-                // Auto-collect gold when the player actually steps onto a new tile.
-                // Matches original pack.c pick_up() GOLD branch in one_move_rogue().
+                // Auto-collect gold and auto-pickup floor items when the player
+                // actually steps onto a new tile.
+                // Matches original pack.c pick_up() / one_move_rogue() in move.c.
                 if matches!(&player_action, PlayerAction::Moved) {
                     let player_pos = self.state.player_position;
                     if let Some(idx) =
@@ -1607,6 +1608,15 @@ impl GameLoop {
                         self.state.stats.gold_collected += gained;
                         self.state.last_system_message =
                             Some(format!("{} pieces of gold.", gained));
+                    }
+                    // Auto-pickup non-gold floor item at the new position.
+                    if let Some(event) = pick_up_item(
+                        &mut self.state.inventory,
+                        &mut self.state.floor_items,
+                        &mut self.state.next_item_id,
+                        player_pos,
+                    ) {
+                        self.state.last_inventory_events.push(event);
                     }
                 }
                 match player_action {

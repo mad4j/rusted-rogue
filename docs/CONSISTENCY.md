@@ -14,6 +14,7 @@ is to help contributors understand intentional deviations and known gaps.
 | Monster movement / AI | ✓ Consistent | |
 | Combat (hit/damage dice) | ✓ Consistent | |
 | Inventory management | ✓ Consistent | |
+| Auto-pickup on step | ✓ Consistent | Items and gold are auto-collected when the player steps onto their tile, matching `one_move_rogue()` / `pick_up()` in `pack.c` / `move.c`; `,` still works as a manual fallback |
 | Food/hunger system | ✓ Consistent | |
 | Traps | ✓ Consistent | |
 | Potions / scrolls / wands | ✓ Consistent | |
