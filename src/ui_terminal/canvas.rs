@@ -35,6 +35,7 @@ impl<'a> canvas::Program<Message> for GameCanvas<'a> {
         );
 
         if self.show_stats {
+            render_game(&mut frame, self.game, self.show_inventory, self.blink_on);
             render_stats(&mut frame, self.game);
         } else if self.show_help {
             render_game(&mut frame, self.game, self.show_inventory, self.blink_on);

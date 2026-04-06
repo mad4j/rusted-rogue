@@ -46,7 +46,7 @@ pub fn run(game: GameLoop) {
         .run_with(move || {
             let splash_handle = img_widget::Handle::from_bytes(SPLASH_BYTES);
             let gameover_handle = img_widget::Handle::from_bytes(GAMEOVER_BYTES);
-            (RogueApp { game, show_help: false, help_page: 0, screen: Screen::Splash, splash_handle, gameover_handle, show_inventory: false, blink_on: false }, Task::none())
+            (RogueApp { game, show_help: false, help_page: 0, screen: Screen::Splash, splash_handle, gameover_handle, show_inventory: false, show_stats: false, blink_on: false }, Task::none())
         })
         .unwrap();
 }
@@ -58,7 +58,6 @@ pub fn run(game: GameLoop) {
 enum Screen {
     Splash,
     Game,
-    Stats,
     GameOver,
 }
 
@@ -70,6 +69,7 @@ struct RogueApp {
     splash_handle: img_widget::Handle,
     gameover_handle: img_widget::Handle,
     show_inventory: bool,
+    show_stats: bool,
     blink_on: bool,
 }
 
@@ -92,13 +92,16 @@ impl RogueApp {
             return Task::none();
         }
 
-        // Stats screen: any key advances — to GameOver if dead, or exits if voluntary quit.
-        if matches!(self.screen, Screen::Stats) {
-            if self.game.state().player_dead {
-                self.screen = Screen::GameOver;
-            } else {
-                println!("Grazie per aver giocato a Rusted Rogue! A presto, avventuriero... se hai il coraggio di tornare.");
-                return iced::exit();
+        // Stats overlay: only SPACE advances — to GameOver if dead, or exits if voluntary quit.
+        if self.show_stats {
+            if matches!(key, Key::Named(Named::Space)) {
+                self.show_stats = false;
+                if self.game.state().player_dead {
+                    self.screen = Screen::GameOver;
+                } else {
+                    println!("Grazie per aver giocato a Rusted Rogue! A presto, avventuriero... se hai il coraggio di tornare.");
+                    return iced::exit();
+                }
             }
             return Task::none();
         }
@@ -124,7 +127,7 @@ impl RogueApp {
         }
 
         if self.game.state().quit_requested {
-            self.screen = Screen::Stats;
+            self.show_stats = true;
             return Task::none();
         }
 
@@ -138,16 +141,19 @@ impl RogueApp {
                         self.help_page += 1;
                     }
                 }
-                _ => {
+                Key::Named(Named::Space) => {
                     self.show_help = false;
                 }
+                _ => {}
             }
             return Task::none();
         }
 
         // Dismiss plain inventory browse.
         if self.show_inventory {
-            self.show_inventory = false;
+            if matches!(key, Key::Named(Named::Space)) {
+                self.show_inventory = false;
+            }
             return Task::none();
         }
 
@@ -240,7 +246,7 @@ impl RogueApp {
     }
 
     fn handle_finished(&mut self) -> Task<Message> {
-        self.screen = Screen::Stats;
+        self.show_stats = true;
         Task::none()
     }
 
@@ -262,18 +268,7 @@ impl RogueApp {
                 help_page: self.help_page,
                 show_inventory: self.show_inventory,
                 blink_on: self.blink_on,
-                show_stats: false,
-            })
-            .width(Length::Fixed(DCOLS as f32 * CELL_W + 2.0 * PADDING))
-            .height(Length::Fixed((DROWS + UI_ROWS) as f32 * CELL_H + 2.0 * PADDING))
-            .into(),
-            Screen::Stats => iced_canvas::Canvas::new(GameCanvas {
-                game: &self.game,
-                show_help: false,
-                help_page: 0,
-                show_inventory: false,
-                blink_on: false,
-                show_stats: true,
+                show_stats: self.show_stats,
             })
             .width(Length::Fixed(DCOLS as f32 * CELL_W + 2.0 * PADDING))
             .height(Length::Fixed((DROWS + UI_ROWS) as f32 * CELL_H + 2.0 * PADDING))

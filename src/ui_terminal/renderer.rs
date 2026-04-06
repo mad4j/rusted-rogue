@@ -368,74 +368,72 @@ fn render_status_bar(frame: &mut canvas::Frame, game: &GameLoop, blink_on: bool)
 }
 
 // ---------------------------------------------------------------------------
-// Stats screen overlay
+// Stats panel overlay
 // ---------------------------------------------------------------------------
 
-/// Render the end-of-run statistics on a black background.
+/// Render the end-of-run statistics as a side panel overlaid on the right side
+/// of the map, matching the layout of the help and inventory panels.
 pub(super) fn render_stats(frame: &mut canvas::Frame, game: &GameLoop) {
-    use iced::Size;
+    const PANEL_WIDTH: usize = 28; // cols 52-79; flush to the right edge
+    // Interior usable width: PANEL_WIDTH - 2 border cols = 26 chars.
+    // Label column is fixed at 17 chars so ": " + value fits in 26.
+    const LABEL_W: usize = 17;
 
     let s = game.state();
 
-    // Dark background fill
-    frame.fill(
-        &canvas::Path::rectangle(iced::Point::ORIGIN, frame.size()),
-        Color::BLACK,
-    );
+    // Outcome-based title and colour.
+    let (title, title_color) = if s.player_dead {
+        ("  DEFEATED", Color::from_rgb(1.0, 0.25, 0.25))
+    } else if s.quit_requested {
+        ("  QUIT", Color::from_rgb(0.7, 0.7, 0.7))
+    } else {
+        ("  STATISTICS", Color::from_rgb(1.0, 0.82, 0.24))
+    };
 
-    let title_color  = Color::from_rgb(1.0, 0.82, 0.24);
-    let label_color  = Color::from_rgb(0.6,  0.6,  0.7);
+    let label_color  = Color::from_rgb(0.6, 0.8, 0.6);
     let value_color  = Color::WHITE;
     let footer_color = Color::from_rgb(0.45, 0.45, 0.5);
 
-    // Draw a simple centered box (column 20..60, row 6..20)
-    let box_left  = 20usize;
-    let box_right = 60usize;
-    let box_top   = 6usize;
-    let box_bot   = 20usize;
-
-    // Fill box background
-    let px_x = box_left  as f32 * super::CELL_W + super::PADDING;
-    let px_y = box_top   as f32 * super::CELL_H + super::PADDING;
-    let px_w = (box_right - box_left) as f32 * super::CELL_W;
-    let px_h = (box_bot   - box_top)  as f32 * super::CELL_H;
-    frame.fill(
-        &canvas::Path::rectangle(iced::Point::new(px_x, px_y), Size::new(px_w, px_h)),
-        Color::from_rgba(0.08, 0.08, 0.12, 1.0),
+    // Dark background rectangle — same as inventory/help panel.
+    let bg_x = PANEL_COL as f32 * super::CELL_W + super::PADDING;
+    let bg_y = super::PADDING;
+    let bg_w = PANEL_WIDTH as f32 * super::CELL_W;
+    let bg_h = (DROWS + 2) as f32 * super::CELL_H;
+    frame.fill_rectangle(
+        Point::new(bg_x, bg_y),
+        iced::Size::new(bg_w, bg_h),
+        Color::from_rgba(0.04, 0.04, 0.14, 0.95),
     );
 
-    // Title
-    let title = "=  Run Statistics  =";
-    let title_col = box_left + (box_right - box_left).saturating_sub(title.len()) / 2;
-    frame.fill_text(cell_text(title, title_col, box_top + 1, title_color));
+    // Header
+    frame.fill_text(cell_text(title, PANEL_COL, 0, title_color));
 
-    // Separator
-    let sep: String = "-".repeat(box_right - box_left - 2);
-    frame.fill_text(cell_text(sep.clone(), box_left + 1, box_top + 2, label_color));
-
-    // Stat rows: (label, value string)
-    let stats: &[(&str, String)] = &[
-        ("Gold collected :",  format!("{}", s.stats.gold_collected)),
-        ("Food eaten     :",  format!("{}", s.stats.food_eaten)),
-        ("Time (turns)   :",  format!("{}", s.turns)),
-        ("Steps taken    :",  format!("{}", s.stats.steps_taken)),
-        ("Damage dealt   :",  format!("{}", s.stats.damage_dealt)),
-        ("Health recovered:", format!("{}", s.stats.health_recovered)),
+    // Stat rows — label and value on the same line.
+    // Format: "{label:<LABEL_W}: {value}"
+    let rows: &[(&str, String)] = &[
+        ("Monsters defeated", format!("{}", s.stats.monsters_defeated)),
+        ("Gold collected",    format!("{}", s.stats.gold_collected)),
+        ("Food eaten",        format!("{}", s.stats.food_eaten)),
+        ("Time (turns)",      format!("{}", s.turns)),
+        ("Steps taken",       format!("{}", s.stats.steps_taken)),
+        ("Damage dealt",      format!("{}", s.stats.damage_dealt)),
+        ("Health recovered",  format!("{}", s.stats.health_recovered)),
     ];
 
-    let label_col = box_left + 2;
-    let value_col = box_left + 22;
-    for (i, (label, value)) in stats.iter().enumerate() {
-        let row = box_top + 4 + i;
-        frame.fill_text(cell_text(*label, label_col, row, label_color));
-        frame.fill_text(cell_text(value.as_str(), value_col, row, value_color));
+    for (i, (label, value)) in rows.iter().enumerate() {
+        let row = i + 2;
+        if row >= DROWS { break; }
+        frame.fill_text(cell_text(
+            format!("{:<LABEL_W$}", label),
+            PANEL_COL + 1, row, label_color,
+        ));
+        frame.fill_text(cell_text(
+            format!(": {}", value),
+            PANEL_COL + 1 + LABEL_W, row, value_color,
+        ));
     }
 
-    // Separator
-    frame.fill_text(cell_text(sep, box_left + 1, box_top + 11, label_color));
-
-    // Footer
-    let footer = "Press any key to continue...";
-    let footer_col = box_left + (box_right - box_left).saturating_sub(footer.len()) / 2;
-    frame.fill_text(cell_text(footer, footer_col, box_top + 12, footer_color));
+    // Footer pinned to the last row of the panel background.
+    let footer_row = DROWS + 1;
+    frame.fill_text(cell_text("SPACE to continue", PANEL_COL + 1, footer_row, footer_color));
 }
