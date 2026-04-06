@@ -44,12 +44,14 @@ is to help contributors understand intentional deviations and known gaps.
   `wizard_check_password()` in `src/game_loop/mod.rs`.
 
 ### Wizard mode – Ctrl+C (add random item)
+
 - **Original**: Ctrl+C calls `new_object_for_wizard()` to drop a random item
   at the player's feet.  
 - **Rust port**: **Not yet implemented** (item generation helper not yet
   exposed; tracked as a backlog item).
 
 ### Wizard mode – Ctrl+M (invoke monster)
+
 - **Original**: Ctrl+M calls `show_monsters()` which reveals all monster
   positions on the current level.  
 - **Rust port**: Implemented as `WizardShowMonsters`; highlights all monsters

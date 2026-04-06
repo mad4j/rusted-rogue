@@ -428,6 +428,10 @@ pub struct InventoryEntry {
     pub ichar: char,
     /// Stack size (1 for most items; >1 for stackable items like arrows).
     pub quantity: u16,
+    /// Quiver id for stackable weapons (arrow, dagger, dart, shuriken).
+    /// Two weapon stacks with different quiver ids never merge, matching the
+    /// original `quiver` field in `struct obj`.
+    pub quiver: Option<u8>,
 }
 
 /// Returns the next available pack letter ('a'–'z') not already used by an
@@ -435,6 +439,48 @@ pub struct InventoryEntry {
 pub fn next_avail_ichar(inventory: &[InventoryEntry]) -> char {
     let used: std::collections::HashSet<char> = inventory.iter().map(|e| e.ichar).collect();
     ('a'..='z').find(|c| !used.contains(c)).unwrap_or('a')
+}
+
+/// True for weapon kinds that stack (arrow, dagger, dart, shuriken) — mirrors
+/// the `check_duplicate` logic in the original pack.c.
+pub fn is_stackable_weapon(item: &InventoryItem) -> bool {
+    item.category == ItemCategory::Weapon
+        && matches!(item.name, "arrow" | "dagger" | "dart" | "shuriken")
+}
+
+/// Compute the floor quantity and quiver id for an item about to be placed on
+/// the dungeon floor.  Stackable weapons get a random quantity (3–15) and a
+/// random quiver id (0–126), matching gr_weapon() in the original object.c.
+/// Everything else has quantity = 1 and no quiver.
+pub fn floor_quantity_and_quiver(item: &InventoryItem, rng: &mut GameRng) -> (u16, Option<u8>) {
+    if is_stackable_weapon(item) {
+        (rng.get_rand(3, 15) as u16, Some(rng.get_rand(0, 126) as u8))
+    } else {
+        (1, None)
+    }
+}
+
+/// Find an existing pack entry that `floor_item` would condense into, matching
+/// the `check_duplicate` logic from pack.c:
+///   - FOOD (except "slime-mold"), SCROLL, POTION: merge by name.
+///   - WEAPON (arrow/dagger/dart/shuriken): merge by name AND quiver id.
+fn find_stackable_entry<'a>(
+    inventory: &'a mut Vec<InventoryEntry>,
+    floor_item: &FloorItem,
+) -> Option<&'a mut InventoryEntry> {
+    let item = &floor_item.item;
+    match item.category {
+        ItemCategory::Food if item.name != "slime-mold" => {
+            inventory.iter_mut().find(|e| e.item.name == item.name)
+        }
+        ItemCategory::Scroll | ItemCategory::Potion => {
+            inventory.iter_mut().find(|e| e.item.name == item.name)
+        }
+        ItemCategory::Weapon if is_stackable_weapon(item) => inventory
+            .iter_mut()
+            .find(|e| e.item.name == item.name && e.quiver == floor_item.quiver),
+        _ => None,
+    }
 }
 
 /// Generate a random item for floor placement, matching original gr_object() in object.c.
@@ -557,6 +603,10 @@ fn gr_ring(rng: &mut GameRng) -> InventoryItem {
 pub struct FloorItem {
     pub item: InventoryItem,
     pub position: Position,
+    /// Stack size — > 1 for stackable weapons placed on the floor.
+    pub quantity: u16,
+    /// Quiver id — mirrors the original `quiver` field in `struct obj`.
+    pub quiver: Option<u8>,
 }
 
 /// A pile of gold coins on the dungeon floor.  Not stored in the player's
@@ -659,6 +709,11 @@ pub fn unequip_by_ichar(
 }
 
 /// Drop the item identified by `ch` at `position`.
+///
+/// Mirrors the original drop() in pack.c:
+/// - Non-weapon stacks with quantity > 1: drop one, keep the rest in the pack.
+/// - Everything else (weapons or single items): remove the entire entry from
+///   the pack and place it on the floor with its full quantity / quiver intact.
 pub fn drop_by_ichar(
     inventory: &mut Vec<InventoryEntry>,
     floor_items: &mut Vec<FloorItem>,
@@ -669,8 +724,28 @@ pub fn drop_by_ichar(
         return None;
     }
     let index = inventory.iter().position(|e| e.ichar == ch)?;
-    let mut entry = inventory.remove(index);
     let mut events = Vec::new();
+
+    // Non-weapon stacks: drop 1, keep the rest.
+    if inventory[index].quantity > 1
+        && inventory[index].item.category != ItemCategory::Weapon
+    {
+        let entry = &mut inventory[index];
+        entry.quantity -= 1;
+        let item_name = entry.item.name;
+        let item_clone = entry.item.clone();
+        floor_items.push(FloorItem {
+            item: item_clone,
+            position,
+            quantity: 1,
+            quiver: None,
+        });
+        events.push(InventoryEvent::Dropped { name: item_name, position });
+        return Some(events);
+    }
+
+    // Single item or weapon stack: remove from pack entirely.
+    let mut entry = inventory.remove(index);
     if let Some(slot) = entry.equipped_slot.take() {
         events.push(InventoryEvent::Unequipped {
             name: entry.item.name,
@@ -680,6 +755,8 @@ pub fn drop_by_ichar(
     floor_items.push(FloorItem {
         item: entry.item.clone(),
         position,
+        quantity: entry.quantity,
+        quiver: entry.quiver,
     });
     events.push(InventoryEvent::Dropped {
         name: entry.item.name,
@@ -694,28 +771,39 @@ pub fn pick_up_item(
     next_item_id: &mut u64,
     position: Position,
 ) -> Option<InventoryEvent> {
-    if inventory.len() >= MAX_PACK_ITEMS {
-        return Some(InventoryEvent::PackFull);
+    let idx = floor_items
+        .iter()
+        .position(|fi| fi.position == position)?;
+    let floor_item = floor_items.remove(idx);
+    let item_name = floor_item.item.name;
+
+    // Try to condense into an existing pack stack (check_duplicate logic).
+    // Capacity is NOT checked for merges — matching the original pack_count()
+    // behaviour which excludes matching slots from the limit.
+    if let Some(existing) = find_stackable_entry(inventory, &floor_item) {
+        existing.quantity += floor_item.quantity;
+        return Some(InventoryEvent::PickedUp { name: item_name });
     }
 
-    let index = floor_items
-        .iter()
-        .position(|floor_item| floor_item.position == position)?;
-    let floor_item = floor_items.remove(index);
+    // No merge found — needs a new slot; check capacity.
+    if inventory.len() >= MAX_PACK_ITEMS {
+        // Put the item back on the floor before returning.
+        floor_items.insert(idx.min(floor_items.len()), floor_item);
+        return Some(InventoryEvent::PackFull);
+    }
 
     let ichar = next_avail_ichar(inventory);
     inventory.push(InventoryEntry {
         id: *next_item_id,
-        item: floor_item.item.clone(),
+        item: floor_item.item,
         equipped_slot: None,
         ichar,
-        quantity: 1,
+        quantity: floor_item.quantity,
+        quiver: floor_item.quiver,
     });
     *next_item_id += 1;
 
-    Some(InventoryEvent::PickedUp {
-        name: floor_item.item.name,
-    })
+    Some(InventoryEvent::PickedUp { name: item_name })
 }
 
 pub fn total_attack_bonus(inventory: &[InventoryEntry]) -> i16 {
@@ -748,6 +836,8 @@ mod tests {
         let mut floor_items = vec![FloorItem {
             item: InventoryItem::dagger(),
             position: Position::new(10, 10),
+            quantity: 1,
+            quiver: None,
         }];
         let mut next_item_id = 1;
 
@@ -772,6 +862,7 @@ mod tests {
                 equipped_slot: None,
                 ichar: 'a',
                 quantity: 1,
+                quiver: None,
             },
             InventoryEntry {
                 id: 2,
@@ -779,6 +870,7 @@ mod tests {
                 equipped_slot: None,
                 ichar: 'b',
                 quantity: 1,
+                quiver: None,
             },
             InventoryEntry {
                 id: 3,
@@ -786,6 +878,7 @@ mod tests {
                 equipped_slot: None,
                 ichar: 'c',
                 quantity: 1,
+                quiver: None,
             },
         ];
 
@@ -807,6 +900,7 @@ mod tests {
             equipped_slot: Some(EquipmentSlot::Weapon),
             ichar: 'a',
             quantity: 1,
+            quiver: None,
         }];
         let mut floor_items = Vec::new();
 
@@ -838,6 +932,7 @@ mod tests {
                 equipped_slot: Some(EquipmentSlot::LeftRing),
                 ichar: 'a',
                 quantity: 1,
+                quiver: None,
             },
             InventoryEntry {
                 id: 2,
@@ -845,6 +940,7 @@ mod tests {
                 equipped_slot: Some(EquipmentSlot::RightRing),
                 ichar: 'b',
                 quantity: 1,
+                quiver: None,
             },
         ];
 

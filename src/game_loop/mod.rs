@@ -6,9 +6,9 @@ use crate::actors::{
 };
 use crate::core_types::{EXP_LEVELS, FOOD_FAINT, FOOD_HUNGRY, FOOD_WEAK, INIT_FOOD, INIT_HP, INIT_STRENGTH, MAX_HP, MAX_TRAPS, Position, TileFlags, TrapKind};
 use crate::inventory_items::{
-    apply_item_effects, drop_by_ichar, equip_by_ichar, gr_floor_item, pick_up_item,
-    remove_item_by_ichar, total_armor_bonus, total_attack_bonus, unequip_by_ichar, EquipmentSlot,
-    FloorItem, GoldPile, InventoryEntry, InventoryEvent, InventoryItem, ItemCategory,
+    apply_item_effects, drop_by_ichar, equip_by_ichar, floor_quantity_and_quiver, gr_floor_item,
+    pick_up_item, remove_item_by_ichar, total_armor_bonus, total_attack_bonus, unequip_by_ichar,
+    EquipmentSlot, FloorItem, GoldPile, InventoryEntry, InventoryEvent, InventoryItem, ItemCategory,
 };
 
 /// Probability (%) that a regular room spawns a gold pile — from rogue.h GOLD_PERCENT.
@@ -291,7 +291,9 @@ fn place_floor_items(level: &GeneratedLevel, rng: &mut GameRng, _depth: i16) -> 
         if items.iter().any(|fi| fi.position == pos) {
             continue;
         }
-        items.push(FloorItem { item: gr_floor_item(rng), position: pos });
+        let item = gr_floor_item(rng);
+        let (quantity, quiver) = floor_quantity_and_quiver(&item, rng);
+        items.push(FloorItem { item, position: pos, quantity, quiver });
     }
     items
 }
@@ -495,6 +497,7 @@ impl GameLoop {
                         equipped_slot: None,
                         ichar: 'a',
                         quantity: 1,
+                        quiver: None,
                     },
                     InventoryEntry {
                         id: 2,
@@ -502,6 +505,7 @@ impl GameLoop {
                         equipped_slot: Some(EquipmentSlot::Armor),
                         ichar: 'b',
                         quantity: 1,
+                        quiver: None,
                     },
                     InventoryEntry {
                         id: 3,
@@ -509,6 +513,7 @@ impl GameLoop {
                         equipped_slot: Some(EquipmentSlot::Weapon),
                         ichar: 'c',
                         quantity: 1,
+                        quiver: None,
                     },
                     InventoryEntry {
                         id: 4,
@@ -516,6 +521,7 @@ impl GameLoop {
                         equipped_slot: None,
                         ichar: 'd',
                         quantity: 1,
+                        quiver: None,
                     },
                     InventoryEntry {
                         id: 5,
@@ -523,6 +529,8 @@ impl GameLoop {
                         equipped_slot: None,
                         ichar: 'e',
                         quantity: arrows_count,
+                        // Initial arrows have quiver = 0 (C struct default, no gr_weapon call).
+                        quiver: Some(0),
                     },
                 ],
                 floor_items,
@@ -737,9 +745,14 @@ impl GameLoop {
                     self.state.floor_gold.push(GoldPile { position: kill_pos, quantity: qty });
                 } else if drop_rng.rand_percent(monster_kind.drop_percent()) {
                     let dropped = gr_floor_item(&mut drop_rng);
-                    self.state
-                        .floor_items
-                        .push(FloorItem { item: dropped, position: kill_pos });
+                    let (drop_qty, drop_quiver) =
+                        floor_quantity_and_quiver(&dropped, &mut drop_rng);
+                    self.state.floor_items.push(FloorItem {
+                        item: dropped,
+                        position: kill_pos,
+                        quantity: drop_qty,
+                        quiver: drop_quiver,
+                    });
                 }
             }
             self.state.last_turn_events.push(event);
@@ -1185,9 +1198,13 @@ impl GameLoop {
                         self.state.last_turn_events.push(event);
                         self.state.last_system_message = Some("You throw and hit.".to_string());
                     } else if self.current_level.grid.is_walkable(target.row, target.col) {
+                        // When a weapon stack is thrown as a whole, it lands
+                        // on the floor with its quantity and quiver intact.
                         self.state.floor_items.push(FloorItem {
                             item: entry.item.clone(),
                             position: target,
+                            quantity: entry.quantity,
+                            quiver: entry.quiver,
                         });
                         self.state.last_system_message = Some("You throw your weapon.".to_string());
                     }
@@ -1989,13 +2006,15 @@ impl GameLoop {
                         let mut rng = GameRng::new(self.state.turns as i32 ^ 0xCA11_i32);
                         let item = gr_floor_item(&mut rng);
                         let name = item.name;
+                        let (qty, quiver) = floor_quantity_and_quiver(&item, &mut rng);
                         let ichar = next_avail_ichar(&self.state.inventory);
                         self.state.inventory.push(InventoryEntry {
                             id: self.state.next_item_id,
                             item,
                             equipped_slot: None,
                             ichar,
-                            quantity: 1,
+                            quantity: qty,
+                            quiver,
                         });
                         self.state.next_item_id += 1;
                         self.state.last_system_message =
@@ -2187,6 +2206,7 @@ mod tests {
                 equipped_slot: None,
                 ichar: 'a',
                 quantity: 1,
+                quiver: None,
             });
 
         // First Quaff sets pending action; SelectItem('a') executes it.
@@ -2269,6 +2289,8 @@ mod tests {
         game.state.floor_items.push(FloorItem {
             item: InventoryItem::dagger(),
             position: game.state.player_position,
+            quantity: 1,
+            quiver: None,
         });
 
         assert_eq!(game.step(Command::PickUp), StepOutcome::Continue);
@@ -2310,6 +2332,7 @@ mod tests {
                 equipped_slot: Some(EquipmentSlot::Weapon),
                 ichar: 'a',
                 quantity: 1,
+                quiver: None,
             });
         game.state
             .inventory
@@ -2319,6 +2342,7 @@ mod tests {
                 equipped_slot: Some(EquipmentSlot::Armor),
                 ichar: 'b',
                 quantity: 1,
+                quiver: None,
             });
 
         game.state.monsters.clear();
@@ -2347,6 +2371,7 @@ mod tests {
                 equipped_slot: None,
                 ichar: 'a',
                 quantity: 1,
+                quiver: None,
             });
         game.state
             .inventory
@@ -2356,6 +2381,7 @@ mod tests {
                 equipped_slot: None,
                 ichar: 'b',
                 quantity: 1,
+                quiver: None,
             });
 
         assert_eq!(game.step(Command::WearArmor), StepOutcome::Continue);

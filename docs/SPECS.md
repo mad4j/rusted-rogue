@@ -646,6 +646,34 @@ The pack is a linked list of `object` structs. Maximum capacity is MAX_PACK_COUN
 Stackable item types: weapons of the same kind/quiver group (arrows, darts, daggers, shurikens),
 food rations, scrolls of the same kind, potions of the same kind.
 
+### Item stacking (condense / check_duplicate rules)
+
+When an item is picked up (`pick_up` in `pack.c`), `check_duplicate` is called first.
+A new item merges into an existing inventory slot when **all** of the following apply:
+
+| Category | Stack condition |
+|----------|----------------|
+| FOOD     | Both items are food **and neither is "slime-mold"** (`FRUIT` kind in the C source). |
+| SCROLL   | Both items share the same scroll name. |
+| POTION   | Both items share the same potion name. |
+| WEAPON   | Both items share the same weapon name **and** the same `quiver` id (0–126). |
+
+When a merge happens the existing entry's `quantity` is incremented by the incoming quantity
+and the incoming object is freed/discarded.  **No capacity check is made for a merge** —
+matching `pack_count()` in the original which excludes the matching slot from the count.
+
+**Floor weapon initialization** (`gr_weapon`): stackable weapons placed on the floor receive
+`quantity = rng(3, 15)` and `quiver = rng(0, 126)`.  Two stacks of arrows on the floor will
+almost never share a quiver id and therefore form separate inventory entries when both are
+picked up.  Starter equipment added by `player_init()` bypasses `gr_weapon`, so the initial
+arrows have `quiver = 0` and `quantity = 1`.
+
+**Drop semantics**:
+- Non-weapon stack (`quantity > 1`): one item is removed from the stack and placed on the floor
+  as a single-quantity floor item; the stack shrinks by 1.
+- Weapon or single-quantity item: the entire entry is removed and placed on the floor, preserving
+  its `quiver` id so that picking it back up merges it with any matching stack.
+
 Items are assigned inventory letters `a`–`z` in first-available order. Letter `L` is used for
 items placed on the floor via drop.
 

@@ -414,6 +414,8 @@ mod tests {
         game.state_mut().floor_items.push(FloorItem {
             item: InventoryItem::dagger(),
             position: item_position,
+            quantity: 1,
+            quiver: None,
         });
 
         let lookups = RenderLookups::from_game(&game);

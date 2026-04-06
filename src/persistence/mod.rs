@@ -222,6 +222,9 @@ struct InventoryEntrySnapshot {
     /// Stack size.  Defaults to 1 for saves written before this field was added.
     #[serde(default = "quantity_one")]
     quantity: u16,
+    /// Quiver id for stackable weapons.  None for saves written before this field was added.
+    #[serde(default)]
+    quiver: Option<u8>,
 }
 
 fn quantity_one() -> u16 { 1 }
@@ -230,6 +233,12 @@ fn quantity_one() -> u16 { 1 }
 struct FloorItemSnapshot {
     item_name: String,
     position: PositionSnapshot,
+    /// Stack size.  Defaults to 1 for saves written before this field was added.
+    #[serde(default = "quantity_one")]
+    quantity: u16,
+    /// Quiver id.  None for saves written before this field was added.
+    #[serde(default)]
+    quiver: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -890,6 +899,7 @@ impl InventoryEntrySnapshot {
                 .map(|slot| equipment_slot_to_string(slot).to_string()),
             ichar: Some(entry.ichar),
             quantity: entry.quantity,
+            quiver: entry.quiver,
         }
     }
 
@@ -912,6 +922,7 @@ impl InventoryEntrySnapshot {
             // '\0' signals "needs reassignment" done after all entries are loaded.
             ichar: self.ichar.unwrap_or('\0'),
             quantity: self.quantity,
+            quiver: self.quiver,
         })
     }
 }
@@ -921,6 +932,8 @@ impl FloorItemSnapshot {
         Self {
             item_name: item.item.name.to_string(),
             position: PositionSnapshot::from_position(item.position),
+            quantity: item.quantity,
+            quiver: item.quiver,
         }
     }
 
@@ -935,6 +948,8 @@ impl FloorItemSnapshot {
         Ok(FloorItem {
             item,
             position: self.position.into_position(),
+            quantity: self.quantity,
+            quiver: self.quiver,
         })
     }
 }
