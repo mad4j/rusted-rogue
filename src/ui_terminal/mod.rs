@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 mod canvas;
 mod help;
@@ -17,6 +18,21 @@ use crate::core_types::{DCOLS, DROWS};
 use crate::game_loop::{Command, GameLoop, StepOutcome};
 
 use canvas::GameCanvas;
+
+/// Returns one of three farewell messages chosen at random based on system time.
+fn random_farewell() -> &'static str {
+    const FAREWELLS: [&str; 3] = [
+        "Thanks for playing Rusted Rogue! See you soon, adventurer... if you dare return.",
+        "The dungeon awaits your return. Until next time, brave soul!",
+        "Your legend ends here — for now. May fortune favour your next descent!",
+    ];
+    let idx = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as usize)
+        .unwrap_or(0)
+        % FAREWELLS.len();
+    FAREWELLS[idx]
+}
 
 // Splash screen PNG embedded at compile time
 const SPLASH_BYTES: &[u8] = include_bytes!("../../resources/splash.png");
@@ -116,7 +132,7 @@ impl RogueApp {
                 if self.game.state().player_dead {
                     self.screen = Screen::GameOver;
                 } else if self.game.state().quit_requested {
-                    println!("Grazie per aver giocato a Rusted Rogue! A presto, avventuriero... se hai il coraggio di tornare.");
+                    println!("{}", random_farewell());
                     return iced::exit();
                 }
                 // Mid-game stats: just close the overlay and continue playing.
@@ -132,7 +148,7 @@ impl RogueApp {
                 _ => false,
             };
             if exit_requested {
-                println!("Grazie per aver giocato a Rusted Rogue! A presto, avventuriero... se hai il coraggio di tornare.");
+                println!("{}", random_farewell());
                 return iced::exit();
             }
             // Any other key: start a fresh game and return to the splash screen.
