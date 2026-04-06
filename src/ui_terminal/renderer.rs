@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use iced::advanced::graphics::text::Paragraph;
+use iced::advanced::text::Paragraph as ParagraphTrait;
 use iced::widget::canvas;
 use iced::{Color, Font, Point};
 
@@ -78,15 +80,56 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inven
         // Draw "--More--" in inverted colours (amber bg, black text) immediately
         // after the message text, matching the original prompt position.
         const MORE_TEXT: &str = "--More--";
-        let more_col = (message.chars().count() + 1).min(DCOLS - MORE_TEXT.len());
-        let more_x = more_col as f32 * super::CELL_W + super::PADDING;
+        // Measure the actual rendered width of the message so --More-- is placed
+        // right after it, regardless of CELL_W vs real font metrics.
+        let msg_width = {
+            let para = Paragraph::with_text(iced::advanced::Text {
+                content: message,
+                bounds: iced::Size::INFINITY,
+                size: iced::Pixels(super::FONT_SIZE),
+                line_height: iced::widget::text::LineHeight::Absolute(iced::Pixels(super::CELL_H)),
+                font: Font::MONOSPACE,
+                horizontal_alignment: iced::alignment::Horizontal::Left,
+                vertical_alignment: iced::alignment::Vertical::Top,
+                shaping: iced::widget::text::Shaping::Basic,
+                wrapping: iced::widget::text::Wrapping::None,
+            });
+            para.min_width()
+        };
+        let more_x = super::PADDING + msg_width + super::CELL_W * 0.5;
         let more_y = super::PADDING; // row 0
+        // Measure the actual rendered width of the string so the background
+        // rectangle matches the text exactly, regardless of CELL_W vs font metrics.
+        let text_width = {
+            let para = Paragraph::with_text(iced::advanced::Text {
+                content: MORE_TEXT,
+                bounds: iced::Size::INFINITY,
+                size: iced::Pixels(super::FONT_SIZE),
+                line_height: iced::widget::text::LineHeight::Absolute(iced::Pixels(super::CELL_H)),
+                font: Font::MONOSPACE,
+                horizontal_alignment: iced::alignment::Horizontal::Left,
+                vertical_alignment: iced::alignment::Vertical::Top,
+                shaping: iced::widget::text::Shaping::Basic,
+                wrapping: iced::widget::text::Wrapping::None,
+            });
+            para.min_width()
+        };
         frame.fill_rectangle(
             iced::Point::new(more_x, more_y),
-            iced::Size::new(MORE_TEXT.len() as f32 * super::CELL_W, super::CELL_H),
+            iced::Size::new(text_width, super::CELL_H),
             MSG_COLOR,
         );
-        frame.fill_text(cell_text(MORE_TEXT, more_col, 0, Color::BLACK));
+        frame.fill_text(canvas::Text {
+            content: MORE_TEXT.to_string(),
+            position: Point::new(more_x, more_y),
+            color: Color::BLACK,
+            size: iced::Pixels(super::FONT_SIZE),
+            line_height: iced::widget::text::LineHeight::Absolute(iced::Pixels(super::CELL_H)),
+            font: Font::MONOSPACE,
+            horizontal_alignment: iced::alignment::Horizontal::Left,
+            vertical_alignment: iced::alignment::Vertical::Top,
+            shaping: iced::widget::text::Shaping::Basic,
+        });
     }
 
     let show_inventory_overlay = show_inventory || game.state().pending_item_action.is_some();
