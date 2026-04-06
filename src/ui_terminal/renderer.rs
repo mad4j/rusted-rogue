@@ -27,14 +27,12 @@ pub(super) fn cell_text(
         size: iced::Pixels(super::FONT_SIZE),
         line_height: iced::widget::text::LineHeight::Absolute(iced::Pixels(super::CELL_H)),
         font: Font::MONOSPACE,
-        horizontal_alignment: iced::alignment::Horizontal::Left,
-        vertical_alignment: iced::alignment::Vertical::Top,
+        max_width: f32::INFINITY,
+        align_x: iced::alignment::Horizontal::Left.into(),
+        align_y: iced::alignment::Vertical::Top.into(),
         shaping: iced::widget::text::Shaping::Basic,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Color mapping
 // ---------------------------------------------------------------------------
 
 pub(super) fn cell_color(ch: char) -> Color {
@@ -85,12 +83,12 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inven
         let msg_width = {
             let para = Paragraph::with_text(iced::advanced::Text {
                 content: message,
-                bounds: iced::Size::INFINITY,
+                bounds: iced::Size::new(f32::INFINITY, f32::INFINITY),
                 size: iced::Pixels(super::FONT_SIZE),
                 line_height: iced::widget::text::LineHeight::Absolute(iced::Pixels(super::CELL_H)),
                 font: Font::MONOSPACE,
-                horizontal_alignment: iced::alignment::Horizontal::Left,
-                vertical_alignment: iced::alignment::Vertical::Top,
+                align_x: iced::alignment::Horizontal::Left.into(),
+                align_y: iced::alignment::Vertical::Top.into(),
                 shaping: iced::widget::text::Shaping::Basic,
                 wrapping: iced::widget::text::Wrapping::None,
             });
@@ -103,12 +101,12 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inven
         let text_width = {
             let para = Paragraph::with_text(iced::advanced::Text {
                 content: MORE_TEXT,
-                bounds: iced::Size::INFINITY,
+                bounds: iced::Size::new(f32::INFINITY, f32::INFINITY),
                 size: iced::Pixels(super::FONT_SIZE),
                 line_height: iced::widget::text::LineHeight::Absolute(iced::Pixels(super::CELL_H)),
                 font: Font::MONOSPACE,
-                horizontal_alignment: iced::alignment::Horizontal::Left,
-                vertical_alignment: iced::alignment::Vertical::Top,
+                align_x: iced::alignment::Horizontal::Left.into(),
+                align_y: iced::alignment::Vertical::Top.into(),
                 shaping: iced::widget::text::Shaping::Basic,
                 wrapping: iced::widget::text::Wrapping::None,
             });
@@ -126,8 +124,9 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inven
             size: iced::Pixels(super::FONT_SIZE),
             line_height: iced::widget::text::LineHeight::Absolute(iced::Pixels(super::CELL_H)),
             font: Font::MONOSPACE,
-            horizontal_alignment: iced::alignment::Horizontal::Left,
-            vertical_alignment: iced::alignment::Vertical::Top,
+            max_width: f32::INFINITY,
+            align_x: iced::alignment::Horizontal::Left.into(),
+            align_y: iced::alignment::Vertical::Top.into(),
             shaping: iced::widget::text::Shaping::Basic,
         });
     }

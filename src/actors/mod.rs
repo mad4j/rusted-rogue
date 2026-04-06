@@ -45,14 +45,14 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Kestrel, Position::new(3, 22))];
 
-        let first_turn = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(1));
+        let first_turn = tick_monsters(&mut monsters, &level, player_position, &[], &mut GameRng::new(1));
 
         assert!(first_turn.is_empty());
         assert_eq!(monsters[0].position, Position::new(3, 21));
 
-        let second_turn = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(2));
-        let third_turn = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(3));
-        let fourth_turn = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(4));
+        let second_turn = tick_monsters(&mut monsters, &level, player_position, &[], &mut GameRng::new(2));
+        let third_turn = tick_monsters(&mut monsters, &level, player_position, &[], &mut GameRng::new(3));
+        let fourth_turn = tick_monsters(&mut monsters, &level, player_position, &[], &mut GameRng::new(4));
 
         assert!(second_turn.is_empty());
         assert!(third_turn.is_empty());
@@ -98,7 +98,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::IceMonster, Position::new(4, 18))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
+        let events = tick_monsters(&mut monsters, &level, player_position, &[], &mut GameRng::new(42));
 
         // IceMonster has 68% hit_chance; on a miss no events are emitted.
         // On a hit it deals 0 damage and applies the Frozen effect.
@@ -130,7 +130,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Aquator, Position::new(4, 18))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
+        let events = tick_monsters(&mut monsters, &level, player_position, &[], &mut GameRng::new(42));
 
         assert!(events.iter().any(|e| matches!(
             e,
@@ -148,7 +148,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Vampire, Position::new(4, 18))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
+        let events = tick_monsters(&mut monsters, &level, player_position, &[], &mut GameRng::new(42));
 
         assert!(events.iter().any(|e| matches!(
             e,
@@ -168,7 +168,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Leprechaun, Position::new(4, 18))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
+        let events = tick_monsters(&mut monsters, &level, player_position, &[], &mut GameRng::new(42));
 
         assert!(events.iter().any(|e| matches!(
             e,
@@ -186,7 +186,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Nymph, Position::new(4, 18))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
+        let events = tick_monsters(&mut monsters, &level, player_position, &[], &mut GameRng::new(42));
 
         assert!(events.iter().any(|e| matches!(
             e,
@@ -204,7 +204,7 @@ mod tests {
         let player_position = level.spawn_position();
         let mut monsters = vec![Monster::new(MonsterKind::Wraith, Position::new(4, 18))];
 
-        let events = tick_monsters(&mut monsters, &level, player_position, &mut GameRng::new(42));
+        let events = tick_monsters(&mut monsters, &level, player_position, &[], &mut GameRng::new(42));
 
         assert!(events.iter().any(|e| matches!(
             e,

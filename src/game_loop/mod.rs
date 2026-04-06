@@ -2332,7 +2332,7 @@ mod tests {
 
         assert!(game.state().monsters.is_empty());
         assert_eq!(game.state().player_hit_points, 12);
-        assert_eq!(game.state().monsters_defeated, 1);
+        assert_eq!(game.state().stats.monsters_defeated, 1);
     }
 
     #[test]
@@ -2430,7 +2430,7 @@ mod tests {
         );
 
         assert!(game.state().monsters.is_empty());
-        assert_eq!(game.state().monsters_defeated, 1);
+        assert_eq!(game.state().stats.monsters_defeated, 1);
         // Monster is dead so no counter-attack: player HP unchanged
         assert_eq!(game.state().player_hit_points, 12);
         // The kill event was emitted

@@ -1225,12 +1225,12 @@ mod tests {
 
         let mut game_a = GameLoop::new(12345);
         game_a.state_mut().level = 3;
-        game_a.state_mut().monsters_defeated = 1;
+        game_a.state_mut().stats.monsters_defeated = 1;
         game_a.state_mut().turns = 10;
 
         let mut game_b = GameLoop::new(12345);
         game_b.state_mut().level = 4;
-        game_b.state_mut().monsters_defeated = 5;
+        game_b.state_mut().stats.monsters_defeated = 5;
         game_b.state_mut().turns = 5;
 
         let rank_a = record_score_to_path(&game_a, RunOutcome::Quit, &score_path)

@@ -37,7 +37,18 @@ pub fn run(game: GameLoop) {
     let win_w = DCOLS as f32 * CELL_W + 2.0 * PADDING;
     let win_h = (DROWS + UI_ROWS) as f32 * CELL_H + 2.0 * PADDING;
 
-    iced::application("Rusted Rogue", RogueApp::update, RogueApp::view)
+    let game = std::sync::Arc::new(std::sync::Mutex::new(Some(game)));
+    iced::application(
+        move || {
+            let game = game.lock().unwrap().take().expect("boot called only once");
+            let splash_handle = img_widget::Handle::from_bytes(SPLASH_BYTES);
+            let gameover_handle = img_widget::Handle::from_bytes(GAMEOVER_BYTES);
+            (RogueApp { game, show_help: false, help_page: 0, screen: Screen::Splash, splash_handle, gameover_handle, show_inventory: false, show_stats: false, blink_on: false, message_queue: VecDeque::new() }, Task::none())
+        },
+        RogueApp::update,
+        RogueApp::view,
+    )
+        .title("Rusted Rogue")
         .subscription(RogueApp::subscription)
         .window(iced::window::Settings {
             size: Size::new(win_w, win_h),
@@ -45,11 +56,7 @@ pub fn run(game: GameLoop) {
             icon: icon::window_icon(),
             ..Default::default()
         })
-        .run_with(move || {
-            let splash_handle = img_widget::Handle::from_bytes(SPLASH_BYTES);
-            let gameover_handle = img_widget::Handle::from_bytes(GAMEOVER_BYTES);
-            (RogueApp { game, show_help: false, help_page: 0, screen: Screen::Splash, splash_handle, gameover_handle, show_inventory: false, show_stats: false, blink_on: false, message_queue: VecDeque::new() }, Task::none())
-        })
+        .run()
         .unwrap();
 }
 
