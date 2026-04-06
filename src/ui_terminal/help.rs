@@ -103,7 +103,45 @@ const HELP_PAGE_3: &[HelpLine] = &[
     HelpLine::Empty,
 ];
 
-pub(super) const HELP_PAGES: &[&[HelpLine]] = &[HELP_PAGE_1, HELP_PAGE_2, HELP_PAGE_3];
+// Page 4 – monsters A-M
+const HELP_PAGE_4: &[HelpLine] = &[
+    HelpLine::Section("MONSTERS (A-M)"),
+    HelpLine::Symbol('A', "Aquator"),
+    HelpLine::Symbol('B', "Bat"),
+    HelpLine::Symbol('C', "Centaur"),
+    HelpLine::Symbol('D', "Dragon"),
+    HelpLine::Symbol('E', "Emu"),
+    HelpLine::Symbol('F', "Venus fly-trap"),
+    HelpLine::Symbol('G', "Griffin"),
+    HelpLine::Symbol('H', "Hobgoblin"),
+    HelpLine::Symbol('I', "Ice monster"),
+    HelpLine::Symbol('J', "Jabberwock"),
+    HelpLine::Symbol('K', "Kestrel"),
+    HelpLine::Symbol('L', "Leprechaun"),
+    HelpLine::Symbol('M', "Medusa"),
+    HelpLine::Empty,
+];
+
+// Page 5 – monsters N-Z
+const HELP_PAGE_5: &[HelpLine] = &[
+    HelpLine::Section("MONSTERS (N-Z)"),
+    HelpLine::Symbol('N', "Nymph"),
+    HelpLine::Symbol('O', "Orc"),
+    HelpLine::Symbol('P', "Phantom"),
+    HelpLine::Symbol('Q', "Quagga"),
+    HelpLine::Symbol('R', "Rattlesnake"),
+    HelpLine::Symbol('S', "Snake"),
+    HelpLine::Symbol('T', "Troll"),
+    HelpLine::Symbol('U', "Black unicorn"),
+    HelpLine::Symbol('V', "Vampire"),
+    HelpLine::Symbol('W', "Wraith"),
+    HelpLine::Symbol('X', "Xeroc"),
+    HelpLine::Symbol('Y', "Yeti"),
+    HelpLine::Symbol('Z', "Zombie"),
+    HelpLine::Empty,
+];
+
+pub(super) const HELP_PAGES: &[&[HelpLine]] = &[HELP_PAGE_1, HELP_PAGE_2, HELP_PAGE_3, HELP_PAGE_4, HELP_PAGE_5];
 
 // ---------------------------------------------------------------------------
 // Help overlay rendering  (same panel style as inventory)
