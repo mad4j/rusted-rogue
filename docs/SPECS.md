@@ -669,6 +669,7 @@ picked up.  Starter equipment added by `player_init()` bypasses `gr_weapon`, so 
 arrows have `quiver = 0` and `quantity = 1`.
 
 **Drop semantics**:
+
 - Non-weapon stack (`quantity > 1`): one item is removed from the stack and placed on the floor
   as a single-quantity floor item; the stack shrinks by 1.
 - Weapon or single-quantity item: the entire entry is removed and placed on the floor, preserving
