@@ -96,31 +96,10 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inven
         };
         let more_x = super::PADDING + msg_width + super::CELL_W * 0.5;
         let more_y = super::PADDING; // row 0
-        // Measure the actual rendered width of the string so the background
-        // rectangle matches the text exactly, regardless of CELL_W vs font metrics.
-        let text_width = {
-            let para = Paragraph::with_text(iced::advanced::Text {
-                content: MORE_TEXT,
-                bounds: iced::Size::new(f32::INFINITY, f32::INFINITY),
-                size: iced::Pixels(super::FONT_SIZE),
-                line_height: iced::widget::text::LineHeight::Absolute(iced::Pixels(super::CELL_H)),
-                font: Font::MONOSPACE,
-                align_x: iced::alignment::Horizontal::Left.into(),
-                align_y: iced::alignment::Vertical::Top.into(),
-                shaping: iced::widget::text::Shaping::Basic,
-                wrapping: iced::widget::text::Wrapping::None,
-            });
-            para.min_width()
-        };
-        frame.fill_rectangle(
-            iced::Point::new(more_x, more_y),
-            iced::Size::new(text_width, super::CELL_H),
-            MSG_COLOR,
-        );
         frame.fill_text(canvas::Text {
             content: MORE_TEXT.to_string(),
             position: Point::new(more_x, more_y),
-            color: Color::BLACK,
+            color: Color::from_rgb(0.55, 0.55, 0.55),
             size: iced::Pixels(super::FONT_SIZE),
             line_height: iced::widget::text::LineHeight::Absolute(iced::Pixels(super::CELL_H)),
             font: Font::MONOSPACE,
@@ -429,6 +408,43 @@ fn render_status_bar(frame: &mut canvas::Frame, game: &GameLoop, blink_on: bool)
 // Stats panel overlay
 // ---------------------------------------------------------------------------
 
+/// Seconds per game turn (1 turn = 10 seconds of in-game time).
+const SECS_PER_TURN: u64 = 10;
+/// Centimetres per step (1 step = 75 cm of in-game distance).
+const CM_PER_STEP: u64 = 75;
+
+fn format_time(turns: u64) -> String {
+    let total_secs   = turns * SECS_PER_TURN;
+    let secs         = total_secs % 60;
+    let total_mins   = total_secs / 60;
+    let mins         = total_mins % 60;
+    let total_hours  = total_mins / 60;
+    let hours        = total_hours % 24;
+    let days         = total_hours / 24;
+    if days > 0 {
+        format!("{}d {}h {}m {}s", days, hours, mins, secs)
+    } else if hours > 0 {
+        format!("{}h {}m {}s", hours, mins, secs)
+    } else if mins > 0 {
+        format!("{}m {}s", mins, secs)
+    } else {
+        format!("{}s", secs)
+    }
+}
+
+fn format_distance(steps: u64) -> String {
+    let cm = steps * CM_PER_STEP;
+    if cm < 100 {
+        format!("{} cm", cm)
+    } else if cm < 100_000 {
+        let m = cm as f64 / 100.0;
+        format!("{:.0} m", m)
+    } else {
+        let km = cm as f64 / 100_000.0;
+        format!("{:.2} km", km)
+    }
+}
+
 /// Render the end-of-run statistics as a side panel overlaid on the right side
 /// of the map, matching the layout of the help and inventory panels.
 pub(super) fn render_stats(frame: &mut canvas::Frame, game: &GameLoop) {
@@ -472,8 +488,8 @@ pub(super) fn render_stats(frame: &mut canvas::Frame, game: &GameLoop) {
         ("Monsters defeated", format!("{}", s.stats.monsters_defeated)),
         ("Gold collected",    format!("{}", s.stats.gold_collected)),
         ("Food eaten",        format!("{}", s.stats.food_eaten)),
-        ("Time (turns)",      format!("{}", s.turns)),
-        ("Steps taken",       format!("{}", s.stats.steps_taken)),
+        ("Time elapsed",      format_time(s.turns)),
+        ("Distance walked",   format_distance(s.stats.steps_taken)),
         ("Damage dealt",      format!("{}", s.stats.damage_dealt)),
         ("Health recovered",  format!("{}", s.stats.health_recovered)),
     ];

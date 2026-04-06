@@ -20,11 +20,6 @@ pub(super) fn collect_messages(game: &GameLoop) -> Vec<String> {
         msgs.push(msg.clone());
     }
 
-    // Silent wall-bump: single "Blocked." with no other feedback.
-    if msgs.is_empty() && state.last_move_blocked {
-        msgs.push("Blocked.".to_string());
-    }
-
     msgs
 }
 
