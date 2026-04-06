@@ -11,6 +11,7 @@ pub(super) struct GameCanvas<'a> {
     pub(super) game: &'a GameLoop,
     pub(super) show_help: bool,
     pub(super) help_page: usize,
+    pub(super) wizard: bool,
     pub(super) show_inventory: bool,
     pub(super) blink_on: bool,
     pub(super) show_stats: bool,
@@ -42,7 +43,7 @@ impl<'a> canvas::Program<Message> for GameCanvas<'a> {
             render_stats(&mut frame, self.game);
         } else if self.show_help {
             render_game(&mut frame, self.game, self.show_inventory, any_panel, self.blink_on, &self.message, self.has_more);
-            render_help_overlay(&mut frame, self.help_page);
+            render_help_overlay(&mut frame, self.help_page, self.wizard);
         } else {
             render_game(&mut frame, self.game, self.show_inventory, any_panel, self.blink_on, &self.message, self.has_more);
         }

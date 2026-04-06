@@ -59,7 +59,7 @@ pub fn run(game: GameLoop) {
             let game = game.lock().unwrap().take().expect("boot called only once");
             let splash_handle = img_widget::Handle::from_bytes(SPLASH_BYTES);
             let gameover_handle = img_widget::Handle::from_bytes(GAMEOVER_BYTES);
-            (RogueApp { game, show_help: false, help_page: 0, screen: Screen::Splash, splash_handle, gameover_handle, show_inventory: false, show_stats: false, blink_on: false, message_queue: VecDeque::new() }, Task::none())
+            (RogueApp { game, show_help: false, help_page: 0, screen: Screen::Splash, splash_handle, gameover_handle, show_inventory: false, show_stats: false, blink_on: false, message_queue: VecDeque::new(), last_message: None }, Task::none())
         },
         RogueApp::update,
         RogueApp::view,
@@ -100,6 +100,8 @@ struct RogueApp {
     /// entry, the front is shown with a `--More--` prompt and input is blocked
     /// until the player presses Space to advance through the queue.
     message_queue: VecDeque<String>,
+    /// The last message that was shown and dismissed (Ctrl+P recalls it).
+    last_message: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -158,6 +160,7 @@ impl RogueApp {
             self.help_page = 0;
             self.show_inventory = false;
             self.message_queue.clear();
+            self.last_message = None;
             return Task::none();
         }
 
@@ -170,7 +173,7 @@ impl RogueApp {
         // acknowledge each with Space before input is accepted again.
         if self.message_queue.len() > 1 {
             if matches!(key, Key::Named(Named::Space)) {
-                self.message_queue.pop_front();
+                self.last_message = self.message_queue.pop_front();
             }
             return Task::none();
         }
@@ -181,7 +184,8 @@ impl RogueApp {
                     self.help_page = self.help_page.saturating_sub(1);
                 }
                 Key::Named(Named::ArrowRight) => {
-                    if self.help_page + 1 < help::HELP_PAGES.len() {
+                    let max = help::pages(self.game.state().wizard).len();
+                    if self.help_page + 1 < max {
                         self.help_page += 1;
                     }
                 }
@@ -263,6 +267,13 @@ impl RogueApp {
                     self.show_stats = true;
                     return Task::none();
                 }
+                // Ctrl+P: recall the last displayed message (no game turn consumed).
+                if matches!(s.as_str(), "p" | "P") {
+                    if let Some(msg) = self.last_message.clone() {
+                        self.message_queue.push_front(msg);
+                    }
+                    return Task::none();
+                }
                 let cmd = match s.as_str() {
                     "w" | "W" => Some(Command::ToggleWizard),
                     "s" | "S" => Some(Command::WizardRevealMap),
@@ -298,6 +309,12 @@ impl RogueApp {
     fn step_and_collect(&mut self, cmd: Command) -> StepOutcome {
         let outcome = self.game.step(cmd);
         let new_msgs = messages::collect_messages(&self.game);
+        // Save the current front message before discarding it.
+        if let Some(prev) = self.message_queue.front() {
+            if !prev.is_empty() {
+                self.last_message = Some(prev.clone());
+            }
+        }
         self.message_queue.clear();
         // Wizard password prompt is shown as the message while typing; skip
         // pushing turn messages in that mode.
@@ -338,6 +355,7 @@ impl RogueApp {
                     game: &self.game,
                     show_help: self.show_help,
                     help_page: self.help_page,
+                    wizard: self.game.state().wizard,
                     show_inventory: self.show_inventory,
                     blink_on: self.blink_on,
                     show_stats: self.show_stats,

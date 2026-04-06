@@ -48,7 +48,7 @@ const HELP_PAGE_1: &[HelpLine] = &[
     HelpLine::Empty,
 ];
 
-// Page 2 – armor, rings and game controls (22 lines)
+// Page 2 – armor, rings and game controls
 const HELP_PAGE_2: &[HelpLine] = &[
     HelpLine::Section("ARMOR & RINGS"),
     HelpLine::Binding("W", "wear"),
@@ -66,14 +66,22 @@ const HELP_PAGE_2: &[HelpLine] = &[
     HelpLine::Binding("L", "load"),
     HelpLine::Binding("Q/Esc", "quit"),
     HelpLine::Binding("Ctrl+A", "statistics"),
+    HelpLine::Binding("Ctrl+P", "recall msg"),
     HelpLine::Empty,
-    HelpLine::Section("WIZARD (Ctrl+W to toggle)"),
+];
+
+// Wizard page – only shown when wizard mode is active
+const HELP_PAGE_WIZARD: &[HelpLine] = &[
+    HelpLine::Section("WIZARD MODE"),
+    HelpLine::Binding("Ctrl+W", "toggle wizard"),
+    HelpLine::Empty,
+    HelpLine::Section("WIZARD COMMANDS"),
     HelpLine::Binding("Ctrl+S", "reveal map"),
     HelpLine::Binding("Ctrl+T", "show traps"),
     HelpLine::Binding("Ctrl+O", "show objects"),
-    HelpLine::Binding("Ctrl+C", "conjure random item"),
+    HelpLine::Binding("Ctrl+C", "conjure item"),
     HelpLine::Binding("Ctrl+M", "show monsters"),
-    HelpLine::Binding("Tab", "list level objects"),
+    HelpLine::Binding("Tab", "list objects"),
     HelpLine::Empty,
 ];
 
@@ -141,19 +149,25 @@ const HELP_PAGE_5: &[HelpLine] = &[
     HelpLine::Empty,
 ];
 
-pub(super) const HELP_PAGES: &[&[HelpLine]] = &[HELP_PAGE_1, HELP_PAGE_2, HELP_PAGE_3, HELP_PAGE_4, HELP_PAGE_5];
+const HELP_PAGES_NORMAL: &[&[HelpLine]] = &[HELP_PAGE_1, HELP_PAGE_2, HELP_PAGE_3, HELP_PAGE_4, HELP_PAGE_5];
+const HELP_PAGES_WIZARD: &[&[HelpLine]] = &[HELP_PAGE_1, HELP_PAGE_2, HELP_PAGE_3, HELP_PAGE_4, HELP_PAGE_5, HELP_PAGE_WIZARD];
+
+pub(super) fn pages(wizard: bool) -> &'static [&'static [HelpLine]] {
+    if wizard { HELP_PAGES_WIZARD } else { HELP_PAGES_NORMAL }
+}
 
 // ---------------------------------------------------------------------------
 // Help overlay rendering  (same panel style as inventory)
 // ---------------------------------------------------------------------------
 
-pub(super) fn render_help_overlay(frame: &mut canvas::Frame, page: usize) {
+pub(super) fn render_help_overlay(frame: &mut canvas::Frame, page: usize, wizard: bool) {
     const GOLD: Color = Color { r: 1.0, g: 0.78, b: 0.20, a: 1.0 };
     const CYAN: Color = Color { r: 0.39, g: 0.86, b: 1.0, a: 1.0 };
     const YELLOW: Color = Color { r: 1.0, g: 0.86, b: 0.31, a: 1.0 };
     const WHITE: Color = Color { r: 0.86, g: 0.86, b: 0.86, a: 1.0 };
 
-    let total = HELP_PAGES.len();
+    let all_pages = pages(wizard);
+    let total = all_pages.len();
 
     // Dark background rectangle – same dimensions as the inventory panel
     let bg_x = PANEL_COL as f32 * super::CELL_W + super::PADDING;
@@ -176,7 +190,7 @@ pub(super) fn render_help_overlay(frame: &mut canvas::Frame, page: usize) {
     }
 
     // Content lines – stop before the last rows so nothing overflows the panel
-    for (i, line) in HELP_PAGES[page].iter().enumerate() {
+    for (i, line) in all_pages[page].iter().enumerate() {
         let row = i + 1;
         if row >= DROWS { break; }
         match line {

@@ -57,8 +57,10 @@ is to help contributors understand intentional deviations and known gaps.
 
 ### Help pages
 - **Original**: Single `?`-triggered text dump listing all commands.  
-- **Rust port**: Three-page help overlay navigated with arrow keys; wizard
-  bindings appear on page 2.
+- **Rust port**: Five-page help overlay navigated with arrow keys; wizard
+  bindings appear on a dedicated sixth page that is only shown when wizard
+  mode is active. `Ctrl+P` recalls the last displayed message (no game turn
+  consumed).
 
 ---
 
