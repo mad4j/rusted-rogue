@@ -34,14 +34,15 @@ impl<'a> canvas::Program<Message> for GameCanvas<'a> {
             Color::BLACK,
         );
 
+        let any_panel = self.show_inventory || self.show_help || self.show_stats;
         if self.show_stats {
-            render_game(&mut frame, self.game, self.show_inventory, self.blink_on);
+            render_game(&mut frame, self.game, self.show_inventory, any_panel, self.blink_on);
             render_stats(&mut frame, self.game);
         } else if self.show_help {
-            render_game(&mut frame, self.game, self.show_inventory, self.blink_on);
+            render_game(&mut frame, self.game, self.show_inventory, any_panel, self.blink_on);
             render_help_overlay(&mut frame, self.help_page);
         } else {
-            render_game(&mut frame, self.game, self.show_inventory, self.blink_on);
+            render_game(&mut frame, self.game, self.show_inventory, any_panel, self.blink_on);
         }
 
         vec![frame.into_geometry()]

@@ -64,7 +64,7 @@ pub(super) fn cell_color(ch: char) -> Color {
 // Column at which the side panel starts (keep in sync with overlay constants)
 const PANEL_COL: usize = 52;
 
-pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inventory: bool, blink_on: bool) {
+pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inventory: bool, dim_panel: bool, blink_on: bool) {
     let lookups = RenderLookups::from_game(game);
 
     let message = render_last_message(game);
@@ -75,14 +75,16 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inven
         Color::from_rgb(1.0, 0.78, 0.59),
     ));
 
-    let show_overlay = show_inventory || game.state().pending_item_action.is_some();
+    let show_inventory_overlay = show_inventory || game.state().pending_item_action.is_some();
+    // Dim map cells under the panel area whenever any side panel is visible.
+    let should_dim = dim_panel || show_inventory_overlay;
 
     for row in 0..DROWS {
         for col in 0..DCOLS {
             let ch = render_cell(game, Position::new(row as i16, col as i16), &lookups);
             // Dim cells that fall under the side panel so their colour does not
             // bleed through the semi-transparent overlay.
-            let color = if show_overlay && col >= PANEL_COL {
+            let color = if should_dim && col >= PANEL_COL {
                 dim_color(cell_color(ch))
             } else {
                 cell_color(ch)
@@ -94,7 +96,7 @@ pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inven
     render_status_bar(frame, game, blink_on);
 
     // Overlay the inventory panel when 'i' is pressed or an item action is pending.
-    if show_overlay {
+    if show_inventory_overlay {
         render_inventory_overlay(frame, game);
     }
 }
