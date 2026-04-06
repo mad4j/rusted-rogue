@@ -84,6 +84,13 @@ At game end the player's gold total is recorded in a shared top-ten score file.
 The display MUST occupy a terminal of at least 24 rows by 80 columns (DROWS=24, DCOLS=80). Row 0
 is the message line. Rows 1 through 22 are the dungeon play area. Row 23 is the status bar.
 
+**Message paging.** After each turn, one or more messages may be generated (hit results, miss
+results, inventory events, system notices).  All queued messages are shown one at a time on
+row 0.  While more than one message is waiting, the current message is followed by an
+inverted-colour `--More--` prompt; all game input is suspended until the player presses
+`Space` to advance to the next message.  When the queue contains only one (or zero) messages
+no prompt is shown and input is accepted normally.
+
 Coordinate origin (0,0) is at the top-left corner of the screen. Rows increase downward; columns
 increase rightward.
 
@@ -144,7 +151,9 @@ The player MUST begin each new game with the following items in the pack (all pr
 The game operates on a turn-by-turn basis where one player action constitutes one turn.
 The sequence within a turn is:
 
-1. Display any pending hit messages.
+1. Display the oldest queued message on row 0.  If additional messages remain, append an
+   inverted-colour `--More--` prompt and block all game input until the player presses Space
+   to advance the queue.
 2. Check for trap-door descent (ends current level immediately).
 3. Refresh cursor to player position.
 4. Read one input command from the player.
@@ -356,10 +365,25 @@ hit_chance -= 2 * rogue.exp + 2 * ring_exp - r_rings
 **Hit chance (player attacking monster):**
 
 ```text
-hit_chance = get_hit_chance(wielded_weapon)
+hit_chance = min(60 + 2*weapon_hit_enchant + 2*exp_level, 100)
 ```
 
-If `rand_percent(hit_chance)` succeeds, the attack hits.
+`weapon_hit_enchant` is the `+hit` enchantment of the wielded weapon (0 if unarmed).
+`exp_level` is the player's current experience level.
+
+If `rng(0..99) < hit_chance` the attack hits, otherwise it misses.
+
+**Melee messages:**
+
+| Event                      | Message shown                              |
+|----------------------------|---------------------------------------------|
+| Player hits monster        | `You hit <monster> for <n>.`                |
+| Player hits and kills      | `You hit <monster> for <n> and kill it.`    |
+| Player misses monster      | `You miss <monster>.`                       |
+| Monster hits player        | `<Monster> hits you for <n>.`               |
+| Monster misses player      | `The <monster> misses.`                     |
+
+Wizard mode bypasses the player hit-chance check (every player attack lands).
 
 **Damage (monster to player):**
 
@@ -917,7 +941,7 @@ All commands are case-sensitive unless noted.
 | `^`     | Identify adjacent trap                     |
 | `s`     | Search adjacent cells (repeat with count)  |
 | `.`     | Rest one turn (or count turns)             |
-| Ctrl+A  | Show average HP statistics                 |
+| Ctrl+A  | Show run statistics overlay                |
 
 **System:**
 

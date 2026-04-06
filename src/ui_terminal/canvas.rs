@@ -14,6 +14,8 @@ pub(super) struct GameCanvas<'a> {
     pub(super) show_inventory: bool,
     pub(super) blink_on: bool,
     pub(super) show_stats: bool,
+    pub(super) message: String,
+    pub(super) has_more: bool,
 }
 
 impl<'a> canvas::Program<Message> for GameCanvas<'a> {
@@ -36,13 +38,13 @@ impl<'a> canvas::Program<Message> for GameCanvas<'a> {
 
         let any_panel = self.show_inventory || self.show_help || self.show_stats;
         if self.show_stats {
-            render_game(&mut frame, self.game, self.show_inventory, any_panel, self.blink_on);
+            render_game(&mut frame, self.game, self.show_inventory, any_panel, self.blink_on, &self.message, self.has_more);
             render_stats(&mut frame, self.game);
         } else if self.show_help {
-            render_game(&mut frame, self.game, self.show_inventory, any_panel, self.blink_on);
+            render_game(&mut frame, self.game, self.show_inventory, any_panel, self.blink_on, &self.message, self.has_more);
             render_help_overlay(&mut frame, self.help_page);
         } else {
-            render_game(&mut frame, self.game, self.show_inventory, any_panel, self.blink_on);
+            render_game(&mut frame, self.game, self.show_inventory, any_panel, self.blink_on, &self.message, self.has_more);
         }
 
         vec![frame.into_geometry()]

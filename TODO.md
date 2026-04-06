@@ -1,6 +1,6 @@
 # TODO List
 
-[] End game statistics (Ctrl+S in original) | `show_statistics()` not implemented |
+[x] End game statistics (Ctrl+S in original) | `show_statistics()` implemented as mid-game stats overlay via Ctrl+A (and Ctrl+S for non-wizard), reusing `render_stats` panel |
 [] Blocking messages (e.g. "The orc hits you") | Original: Message blocks input until acknowledged. Rust port: Messages are non-blocking overlays; player can continue acting while messages are visible. |
 [] Wizard Ctrl+C (random item) | `new_object_for_wizard()` equivalent not implemented |
 [] Auto-pickup gold | Original: Player automatically picks up gold when stepping on it. Rust port: Auto-pickup not implemented; player must explicitly pick up gold with the `g` command. |

@@ -191,10 +191,18 @@ enum CombatEventSnapshot {
         #[serde(default)]
         kill_exp: i32,
     },
+    PlayerMissedMonster {
+        monster_kind: String,
+        position: PositionSnapshot,
+    },
     MonsterHitPlayer {
         monster_kind: String,
         position: PositionSnapshot,
         damage: i16,
+    },
+    MonsterMissedPlayer {
+        monster_kind: String,
+        position: PositionSnapshot,
     },
     MonsterAppliedEffect {
         monster_kind: String,
@@ -756,6 +764,12 @@ impl CombatEventSnapshot {
                 killed: *killed,
                 kill_exp: *kill_exp,
             },
+            CombatEvent::PlayerMissedMonster { monster_kind, position } => {
+                Self::PlayerMissedMonster {
+                    monster_kind: monster_kind_to_string(*monster_kind).to_string(),
+                    position: PositionSnapshot::from_position(*position),
+                }
+            }
             CombatEvent::MonsterHitPlayer {
                 monster_kind,
                 position,
@@ -765,6 +779,12 @@ impl CombatEventSnapshot {
                 position: PositionSnapshot::from_position(*position),
                 damage: *damage,
             },
+            CombatEvent::MonsterMissedPlayer { monster_kind, position } => {
+                Self::MonsterMissedPlayer {
+                    monster_kind: monster_kind_to_string(*monster_kind).to_string(),
+                    position: PositionSnapshot::from_position(*position),
+                }
+            }
             CombatEvent::MonsterAppliedEffect {
                 monster_kind,
                 position,
@@ -812,6 +832,12 @@ impl CombatEventSnapshot {
                 killed,
                 kill_exp,
             },
+            Self::PlayerMissedMonster { monster_kind, position } => {
+                CombatEvent::PlayerMissedMonster {
+                    monster_kind: monster_kind_from_string(&monster_kind)?,
+                    position: position.into_position(),
+                }
+            }
             Self::MonsterHitPlayer {
                 monster_kind,
                 position,
@@ -821,6 +847,12 @@ impl CombatEventSnapshot {
                 position: position.into_position(),
                 damage,
             },
+            Self::MonsterMissedPlayer { monster_kind, position } => {
+                CombatEvent::MonsterMissedPlayer {
+                    monster_kind: monster_kind_from_string(&monster_kind)?,
+                    position: position.into_position(),
+                }
+            }
             Self::MonsterAppliedEffect {
                 monster_kind,
                 position,

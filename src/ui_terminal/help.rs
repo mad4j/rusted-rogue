@@ -65,6 +65,7 @@ const HELP_PAGE_2: &[HelpLine] = &[
     HelpLine::Binding("S", "save"),
     HelpLine::Binding("L", "load"),
     HelpLine::Binding("Q/Esc", "quit"),
+    HelpLine::Binding("Ctrl+A", "statistics"),
     HelpLine::Empty,
     HelpLine::Section("WIZARD (Ctrl+W to toggle)"),
     HelpLine::Binding("Ctrl+S", "reveal map"),

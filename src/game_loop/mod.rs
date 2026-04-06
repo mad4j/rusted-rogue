@@ -670,6 +670,24 @@ impl GameLoop {
             return PlayerAction::Held;
         }
 
+        // Hit-chance check: before attacking, roll against player's accuracy.
+        // Matches original get_hit_chance(): BASE 60 + 2*hit_enchant + 2*exp_level.
+        if let Some(monster) = self.state.monsters.iter().find(|m| m.position == target) {
+            let monster_kind = monster.kind;
+            let weapon_bonus = total_attack_bonus(&self.state.inventory).max(0) as i32;
+            let hit_chance =
+                (60 + 2 * weapon_bonus + 2 * self.state.player_exp_level as i32).min(100);
+            let mut hit_rng = GameRng::new(self.state.turns as i32 ^ 0xF177_i32);
+            if !self.state.wizard && hit_rng.get_rand(0, 99) >= hit_chance {
+                self.state.last_turn_events.push(CombatEvent::PlayerMissedMonster {
+                    monster_kind,
+                    position: target,
+                });
+                self.state.last_move_blocked = false;
+                return PlayerAction::Attacked;
+            }
+        }
+
         if let Some(event) = attack_monster(&mut self.state.monsters, target, attack_damage) {
             // Track total damage dealt to monsters.
             if let CombatEvent::PlayerHitMonster { damage, .. } = event {
@@ -1477,6 +1495,8 @@ impl GameLoop {
                     }
                 },
                 CombatEvent::PlayerHitMonster { .. } => {}
+                CombatEvent::PlayerMissedMonster { .. } => {}
+                CombatEvent::MonsterMissedPlayer { .. } => {}
             }
 
             self.state.last_turn_events.push(event);

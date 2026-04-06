@@ -70,10 +70,18 @@ pub enum CombatEvent {
         killed: bool,
         kill_exp: i32,
     },
+    PlayerMissedMonster {
+        monster_kind: MonsterKind,
+        position: Position,
+    },
     MonsterHitPlayer {
         monster_kind: MonsterKind,
         position: Position,
         damage: i16,
+    },
+    MonsterMissedPlayer {
+        monster_kind: MonsterKind,
+        position: Position,
     },
     MonsterAppliedEffect {
         monster_kind: MonsterKind,

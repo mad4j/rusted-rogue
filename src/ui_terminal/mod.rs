@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 mod canvas;
 mod help;
 mod icon;
@@ -46,7 +48,7 @@ pub fn run(game: GameLoop) {
         .run_with(move || {
             let splash_handle = img_widget::Handle::from_bytes(SPLASH_BYTES);
             let gameover_handle = img_widget::Handle::from_bytes(GAMEOVER_BYTES);
-            (RogueApp { game, show_help: false, help_page: 0, screen: Screen::Splash, splash_handle, gameover_handle, show_inventory: false, show_stats: false, blink_on: false }, Task::none())
+            (RogueApp { game, show_help: false, help_page: 0, screen: Screen::Splash, splash_handle, gameover_handle, show_inventory: false, show_stats: false, blink_on: false, message_queue: VecDeque::new() }, Task::none())
         })
         .unwrap();
 }
@@ -71,6 +73,10 @@ struct RogueApp {
     show_inventory: bool,
     show_stats: bool,
     blink_on: bool,
+    /// Messages pending player acknowledgement.  When this has more than one
+    /// entry, the front is shown with a `--More--` prompt and input is blocked
+    /// until the player presses Space to advance through the queue.
+    message_queue: VecDeque<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -92,16 +98,21 @@ impl RogueApp {
             return Task::none();
         }
 
-        // Stats overlay: only SPACE advances — to GameOver if dead, or exits if voluntary quit.
+        // Stats overlay: SPACE or Escape dismisses it.
+        // End-of-run: advances to GameOver (if dead) or exits (if quit).
+        // Mid-game (Ctrl+A): simply closes the overlay.
         if self.show_stats {
-            if matches!(key, Key::Named(Named::Space)) {
+            let dismiss = matches!(key, Key::Named(Named::Space))
+                || matches!(key, Key::Named(Named::Escape));
+            if dismiss {
                 self.show_stats = false;
                 if self.game.state().player_dead {
                     self.screen = Screen::GameOver;
-                } else {
+                } else if self.game.state().quit_requested {
                     println!("Grazie per aver giocato a Rusted Rogue! A presto, avventuriero... se hai il coraggio di tornare.");
                     return iced::exit();
                 }
+                // Mid-game stats: just close the overlay and continue playing.
             }
             return Task::none();
         }
@@ -123,11 +134,21 @@ impl RogueApp {
             self.show_help = false;
             self.help_page = 0;
             self.show_inventory = false;
+            self.message_queue.clear();
             return Task::none();
         }
 
         if self.game.state().quit_requested {
             self.show_stats = true;
+            return Task::none();
+        }
+
+        // Message paging: when multiple messages are queued the player MUST
+        // acknowledge each with Space before input is accepted again.
+        if self.message_queue.len() > 1 {
+            if matches!(key, Key::Named(Named::Space)) {
+                self.message_queue.pop_front();
+            }
             return Task::none();
         }
 
@@ -161,18 +182,17 @@ impl RogueApp {
         if self.game.state().wizard_password_input.is_some() {
             match &key {
                 Key::Named(Named::Enter) => {
-                    let _ = self.game.step(Command::WizardPasswordSubmit);
+                    self.step_and_collect(Command::WizardPasswordSubmit);
                 }
                 Key::Named(Named::Escape) => {
-                    let _ = self.game.step(Command::WizardPasswordCancel);
+                    self.step_and_collect(Command::WizardPasswordCancel);
                 }
                 Key::Named(Named::Backspace) => {
-                    // Remove last character from the buffer via a dedicated command
-                    let _ = self.game.step(Command::WizardPasswordChar('\x08'));
+                    self.step_and_collect(Command::WizardPasswordChar('\x08'));
                 }
                 Key::Character(s) => {
                     if let Some(ch) = s.chars().next() {
-                        let _ = self.game.step(Command::WizardPasswordChar(ch));
+                        self.step_and_collect(Command::WizardPasswordChar(ch));
                     }
                 }
                 _ => {}
@@ -184,12 +204,12 @@ impl RogueApp {
         if self.game.state().pending_item_action.is_some() {
             match &key {
                 Key::Named(Named::Escape) => {
-                    let _ = self.game.step(Command::CancelItemSelect);
+                    self.step_and_collect(Command::CancelItemSelect);
                 }
                 Key::Character(s) => {
                     let ch = s.chars().next().unwrap_or('\0');
                     if ch.is_ascii_lowercase() {
-                        let outcome = self.game.step(Command::SelectItem(ch));
+                        let outcome = self.step_and_collect(Command::SelectItem(ch));
                         if outcome == StepOutcome::Finished {
                             return self.handle_finished();
                         }
@@ -215,6 +235,11 @@ impl RogueApp {
         // Ctrl+key bindings for wizard mode and other control commands.
         if modifiers.control() {
             if let Key::Character(s) = &key {
+                // Ctrl+A: show statistics overlay in any mode.
+                if matches!(s.as_str(), "a" | "A") {
+                    self.show_stats = true;
+                    return Task::none();
+                }
                 let cmd = match s.as_str() {
                     "w" | "W" => Some(Command::ToggleWizard),
                     "s" | "S" => Some(Command::WizardRevealMap),
@@ -225,7 +250,7 @@ impl RogueApp {
                     _ => None,
                 };
                 if let Some(cmd) = cmd {
-                    let outcome = self.game.step(cmd);
+                    let outcome = self.step_and_collect(cmd);
                     if outcome == StepOutcome::Finished {
                         return self.handle_finished();
                     }
@@ -236,13 +261,29 @@ impl RogueApp {
         }
 
         if let Some(cmd) = input::key_to_command(&key) {
-            let outcome = self.game.step(cmd);
+            let outcome = self.step_and_collect(cmd);
             if outcome == StepOutcome::Finished {
                 return self.handle_finished();
             }
         }
 
         Task::none()
+    }
+
+    /// Execute a game command and refresh the message queue from the resulting
+    /// game state.  Returns the step outcome.
+    fn step_and_collect(&mut self, cmd: Command) -> StepOutcome {
+        let outcome = self.game.step(cmd);
+        let new_msgs = messages::collect_messages(&self.game);
+        self.message_queue.clear();
+        // Wizard password prompt is shown as the message while typing; skip
+        // pushing turn messages in that mode.
+        if self.game.state().wizard_password_input.is_none() {
+            for msg in new_msgs {
+                self.message_queue.push_back(msg);
+            }
+        }
+        outcome
     }
 
     fn handle_finished(&mut self) -> Task<Message> {
@@ -262,17 +303,28 @@ impl RogueApp {
                 .height(Length::Fill)
                 .content_fit(ContentFit::Contain)
                 .into(),
-            Screen::Game => iced_canvas::Canvas::new(GameCanvas {
-                game: &self.game,
-                show_help: self.show_help,
-                help_page: self.help_page,
-                show_inventory: self.show_inventory,
-                blink_on: self.blink_on,
-                show_stats: self.show_stats,
-            })
-            .width(Length::Fixed(DCOLS as f32 * CELL_W + 2.0 * PADDING))
-            .height(Length::Fixed((DROWS + UI_ROWS) as f32 * CELL_H + 2.0 * PADDING))
-            .into(),
+            Screen::Game => {
+                // Wizard-password prompt preempts the normal message queue.
+                let message: String = if let Some(prompt) = messages::wizard_prompt(&self.game) {
+                    prompt
+                } else {
+                    self.message_queue.front().cloned().unwrap_or_default()
+                };
+                let has_more = self.message_queue.len() > 1;
+                iced_canvas::Canvas::new(GameCanvas {
+                    game: &self.game,
+                    show_help: self.show_help,
+                    help_page: self.help_page,
+                    show_inventory: self.show_inventory,
+                    blink_on: self.blink_on,
+                    show_stats: self.show_stats,
+                    message,
+                    has_more,
+                })
+                .width(Length::Fixed(DCOLS as f32 * CELL_W + 2.0 * PADDING))
+                .height(Length::Fixed((DROWS + UI_ROWS) as f32 * CELL_H + 2.0 * PADDING))
+                .into()
+            }
         }
     }
 

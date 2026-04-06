@@ -7,7 +7,6 @@ use crate::core_types::{Position, TileFlags, DCOLS, DROWS};
 use crate::game_loop::GameLoop;
 use crate::inventory_items::{total_armor_bonus, ItemCategory};
 
-use super::messages::render_last_message;
 
 // ---------------------------------------------------------------------------
 // Shared text helper
@@ -64,16 +63,31 @@ pub(super) fn cell_color(ch: char) -> Color {
 // Column at which the side panel starts (keep in sync with overlay constants)
 const PANEL_COL: usize = 52;
 
-pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inventory: bool, dim_panel: bool, blink_on: bool) {
+pub(super) fn render_game(frame: &mut canvas::Frame, game: &GameLoop, show_inventory: bool, dim_panel: bool, blink_on: bool, message: &str, has_more: bool) {
     let lookups = RenderLookups::from_game(game);
 
-    let message = render_last_message(game);
+    const MSG_COLOR: Color = Color { r: 1.0, g: 0.78, b: 0.59, a: 1.0 };
     frame.fill_text(cell_text(
         message,
         0,
         0,
-        Color::from_rgb(1.0, 0.78, 0.59),
+        MSG_COLOR,
     ));
+
+    if has_more {
+        // Draw "--More--" in inverted colours (amber bg, black text) immediately
+        // after the message text, matching the original prompt position.
+        const MORE_TEXT: &str = "--More--";
+        let more_col = (message.chars().count() + 1).min(DCOLS - MORE_TEXT.len());
+        let more_x = more_col as f32 * super::CELL_W + super::PADDING;
+        let more_y = super::PADDING; // row 0
+        frame.fill_rectangle(
+            iced::Point::new(more_x, more_y),
+            iced::Size::new(MORE_TEXT.len() as f32 * super::CELL_W, super::CELL_H),
+            MSG_COLOR,
+        );
+        frame.fill_text(cell_text(MORE_TEXT, more_col, 0, Color::BLACK));
+    }
 
     let show_inventory_overlay = show_inventory || game.state().pending_item_action.is_some();
     // Dim map cells under the panel area whenever any side panel is visible.

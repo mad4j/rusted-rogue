@@ -127,8 +127,13 @@ pub fn tick_monsters(
                             effect,
                         });
                     }
+                } else {
+                    // Monster missed the player
+                    events.push(CombatEvent::MonsterMissedPlayer {
+                        monster_kind: monster.kind,
+                        position: monster.position,
+                    });
                 }
-                // On a miss: no events emitted
             }
             MonsterAction::ConfusePlayer => {
                 occupied_positions.insert(previous_position);
