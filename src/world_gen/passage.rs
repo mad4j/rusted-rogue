@@ -205,7 +205,10 @@ pub(super) fn connect_rooms(
             (room2, room1, b, a)
         };
         let (d1, d2) = put_horizontal_doors(grid, rng, left, right, level_depth);
-        draw_simple_passage(grid, rng, d1, d2, true, level_depth);
+        loop {
+            draw_simple_passage(grid, rng, d1, d2, true, level_depth);
+            if !rng.rand_percent(4) { break; }
+        }
         set_room_door(rooms, left_slot, DIR_RIGHT, d1, right_slot, d2);
         set_room_door(rooms, right_slot, DIR_LEFT, d2, left_slot, d1);
         return true;
@@ -218,7 +221,10 @@ pub(super) fn connect_rooms(
             (room2, room1, b, a)
         };
         let (d1, d2) = put_vertical_doors(grid, rng, top, bottom, level_depth);
-        draw_simple_passage(grid, rng, d1, d2, false, level_depth);
+        loop {
+            draw_simple_passage(grid, rng, d1, d2, false, level_depth);
+            if !rng.rand_percent(4) { break; }
+        }
         set_room_door(rooms, top_slot, DIR_DOWN, d1, bottom_slot, d2);
         set_room_door(rooms, bottom_slot, DIR_UP, d2, top_slot, d1);
         return true;

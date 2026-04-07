@@ -221,14 +221,62 @@ Generation terminates early once full connectivity is confirmed. Remaining isola
 connected slots are then processed by `fill_out_level()`, which connects them as dead-ends or
 extends existing passages.
 
-Passages are drawn as horizontal or vertical tunnel segments (`#`), potentially with one bend.
-There is a 4% chance of drawing a second overlapping passage segment for the same connection.
+**Door placement (`put_door`):**
+
+For each connection a door is placed on the appropriate wall of each participating room:
+
+- For `R_ROOM` slots: the door column (for LEFT/RIGHT) or row (for UP/DOWN) is fixed to the
+  wall edge; the other coordinate is chosen randomly along the wall, retrying until a
+  `HORWALL` or `TUNNEL` tile is found. The tile is then set to `DOOR`.
+- For `R_MAZE` slots: `wall_width = 0`, so the door can be placed at the outermost cell of
+  the slot bounds.
+- If `cur_level > 2` and `rand_percent(HIDE_PERCENT=12)`: the door tile has `HIDDEN` added.
+
+**Passage drawing:**
+
+Passages are drawn as L-shaped tunnel segments (`#`) with one horizontal and one vertical leg
+meeting at a randomly chosen bend point. After placing both doors, the passage is drawn by a
+`do { draw_simple_passage(...) } while (rand_percent(4))` loop, giving a cumulative ~4% chance
+of one additional overlapping passage being drawn between the same two door tiles.
 
 ### 5.4. Mazes
 
-Some slots without rooms may be converted to maze rooms (`R_MAZE`) through the `add_mazes()`
-procedure. Exact conditions are implementation-specific but mazes appear as irregular tunnel
-networks that are connected to adjacent rooms.
+Some slots without rooms may be converted to maze rooms (`R_MAZE`) through `add_mazes()`.
+
+**Activation:** Only on levels ≥ 2. Probability per empty (`R_NOTHING`) slot:
+
+```
+maze_percent = (cur_level * 5) / 4
+if cur_level > 15: maze_percent += cur_level
+```
+
+Slots are iterated starting from a random offset, wrapping around to cover all 9 slots.
+
+**`make_maze` algorithm** (recursive DFS, 1-cell steps):
+
+Starting from a randomly chosen cell inside the slot bounds (strictly interior), follow this
+procedure recursively:
+
+1. Mark the current cell `(r, c)` as `TUNNEL`.
+2. With 33% probability, shuffle the direction array `[UP, DOWN, LEFT, RIGHT]` by performing
+   10 random pairwise swaps.
+3. For each direction in the (possibly shuffled) order:
+   - Compute the neighbor cell `(nr, nc)` one step in that direction.
+   - Check bounds: `nr` MUST remain within `[top_row, bottom_row]` and `nc` within
+     `[left_col, right_col]`.
+   - Check that `(nr, nc)` is NOT already `TUNNEL`.
+   - Check three additional adjacency cells to prevent laterally-adjacent tunnels:
+     - **UP** (`nr = r-1`): `[r-1][c-1]`, `[r-1][c+1]`, `[r-2][c]` must not be `TUNNEL`.
+     - **DOWN** (`nr = r+1`): `[r+1][c-1]`, `[r+1][c+1]`, `[r+2][c]` must not be `TUNNEL`.
+     - **LEFT** (`nc = c-1`): `[r-1][c-1]`, `[r+1][c-1]`, `[r][c-2]` must not be `TUNNEL`.
+     - **RIGHT** (`nc = c+1`): `[r-1][c+1]`, `[r+1][c+1]`, `[r][c+2]` must not be `TUNNEL`.
+   - If all checks pass: recurse with the neighbor as the new current cell.
+
+This creates a dense, organic labyrinth where no two tunnel cells are laterally adjacent unless
+directly connected through the recursion path.
+
+After drawing the maze, `hide_boxed_passage` is called `get_rand(0, 2)` times on the slot
+bounds to randomly hide some tunnel tiles.
 
 ### 5.5. Level Content Placement
 
