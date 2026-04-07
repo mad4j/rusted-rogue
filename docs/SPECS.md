@@ -307,7 +307,7 @@ Food is forced (overrides roll) if `foods_count < cur_level/2`.
 
 4. Items are only placed on the first visit to a level.
 
-**c) Stairs:** One downward staircase (`%`) per level, placed on a random floor tile.
+**c) Stairs:** One downward staircase (`%`) per level. Placement uses the main level RNG to pick a random cell whose flags are exactly `FLOOR` or exactly `TUNNEL` (no other flags set) within a `R_ROOM` or `R_MAZE` slot. The `STAIRS` flag is OR-ed onto the existing tile (the cell retains its `FLOOR` or `TUNNEL` flag).
 
 **d) Traps:** 0–MAX_TRAPS (10) hidden traps per level. All begin hidden (HIDDEN flag set).
 Trap count by dungeon depth (`add_traps` in `trap.c`):
