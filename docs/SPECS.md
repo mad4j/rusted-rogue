@@ -245,7 +245,7 @@ Some slots without rooms may be converted to maze rooms (`R_MAZE`) through `add_
 
 **Activation:** Only on levels ≥ 2. Probability per empty (`R_NOTHING`) slot:
 
-```
+``` C
 maze_percent = (cur_level * 5) / 4
 if cur_level > 15: maze_percent += cur_level
 ```
@@ -391,11 +391,80 @@ tunnel side-branch.
 
 ### 6.3. Visibility
 
-Rooms are lit when the player enters them and darkened upon exit (unless the player is blind).
-Tunnels reveal only the immediate neighboring cells of the player position.
+#### 6.3.1. Current-Room Tracking
 
-Invisible monsters (INVISIBLE flag) display as their trail character (floor tile beneath them)
-unless the player has `detect_monster`, `see_invisible`, or the ring of see invisible active.
+The engine maintains a `cur_room` value that is either a room index (0–8) or the sentinel
+`PASSAGE` (−3).  It starts as `PASSAGE` at spawn and transitions during movement:
+
+- **PASSAGE → room**: when the player steps onto a DOOR cell that belongs to a room while
+  `cur_room == PASSAGE`.  `light_up_room` is called and `cur_room` is updated to the room index.
+- **room → PASSAGE**: when the player steps from a DOOR cell onto a TUNNEL cell.  `darken_room`
+  is called and `cur_room` is set back to `PASSAGE`.
+
+#### 6.3.2. Room Illumination (`light_up_room`)
+
+Called automatically when the player enters a room from a passage.
+
+- Iterates over every cell in the room's bounding box: rows `[top_row .. bottom_row]`,
+  cols `[left_col .. right_col]` (inclusive; this includes wall and door border cells).
+- Sets each cell to its `get_dungeon_char` representation on the display.
+- Also redraws the player's `@` glyph at the current position.
+- **Blind:** if the player is blind, `light_up_room` is a no-op — the room does not become
+  visible.
+
+#### 6.3.3. Room Darkening (`darken_room`)
+
+Called automatically when the player exits a room through a door into a tunnel.
+
+- Iterates only over **interior** cells: rows `[top_row+1 .. bottom_row-1]`,
+  cols `[left_col+1 .. right_col-1]` (exclusive of the border; walls and doors are NOT
+  darkened and remain permanently visible once seen).
+- For each interior cell (non-blind):
+  - If the cell contains an OBJECT or STAIRS flag: **not** darkened — items and staircase
+    remain visible even after the player leaves the room.
+  - If `detect_monster` is active and the cell contains a MONSTER: **not** darkened.
+  - Otherwise: cell is cleared to a space character (invisible).
+  - If the cell contains an unhidden TRAP (`TRAP` set, `HIDDEN` clear): '^' is re-drawn
+    even after clearing, so revealed traps stay visible.
+- **Blind:** when the player is blind, ALL interior cells are unconditionally cleared
+  (objects and stairs are not preserved).
+
+#### 6.3.4. Passage Lighting (`light_passage`)
+
+Active whenever the player moves through a tunnel (or is standing at a door while
+`cur_room == PASSAGE`).
+
+- Reveals cells in the 3×3 neighborhood of the player position (offsets `Δrow, Δcol ∈ {-1,0,1}`).
+- A neighbor cell is revealed only if `can_move(player_row, player_col, neighbor_row, neighbor_col)`
+  returns true.
+- `can_move` rules:
+  1. Target must be passable (FLOOR | TUNNEL | DOOR | STAIRS | unhidden TRAP; not hidden TUNNEL).
+  2. For diagonal moves (`Δrow ≠ 0 AND Δcol ≠ 0`): the move is blocked if either the source or
+     target cell has the DOOR flag, or if either of the two intermediate orthogonal cells is
+     NOTHING.
+- **Blind:** if the player is blind, `light_passage` is a no-op.
+
+#### 6.3.5. Maze Rooms
+
+Maze rooms are composed of TUNNEL cells (not FLOOR) and have no wall border.  Because their
+cells are TUNNEL type, the player always perceives them through `light_passage` (3×3 local view)
+rather than `light_up_room`.  They are never fully illuminated and are never darkened by
+`darken_room`.
+
+#### 6.3.6. Monster Visibility (`rogue_can_see`)
+
+A monster at `(row, col)` is visible to the player if ALL of the following hold:
+
+- Player is **not** blind.
+- Either:
+  - `get_room_number(row, col) == cur_room` (same lit room) **and** `cur_room` is not a maze
+    room (`!(rooms[cur_room].is_room & R_MAZE)`), **or**
+  - `rogue_is_around(row, col)` — the monster is within Chebyshev distance 1 of the player
+    (adjacent, including diagonals).
+
+Invisible monsters (`INVISIBLE` flag) display as their trail character (the floor tile beneath
+them) unless the player has `detect_monster`, `see_invisible`, or the ring of see invisible
+active.
 
 ## 7. Combat System
 

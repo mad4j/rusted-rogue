@@ -571,23 +571,57 @@ impl GameLoop {
         }
     }
 
+    /// Mirrors `light_up_room` from room.c: reveals all cells in the room's bounding box,
+    /// including walls and doors (rows top_row..=bottom_row, cols left_col..=right_col).
     fn update_explored(&mut self) {
         let pos = self.state.player_position;
         if let Some(room) = self.current_level.rooms.iter().find(|r| r.contains(pos.row, pos.col)) {
-            for row in (room.top_row - 1)..=(room.bottom_row + 1) {
-                for col in (room.left_col - 1)..=(room.right_col + 1) {
+            let (top, bottom, left, right) =
+                (room.top_row, room.bottom_row, room.left_col, room.right_col);
+            for row in top..=bottom {
+                for col in left..=right {
                     if DungeonGrid::in_bounds(row, col) {
                         self.state.explored.insert(Position::new(row, col));
                     }
                 }
             }
         } else {
+            // In a tunnel: reveal the 3×3 neighbourhood (mirrors light_passage).
             for drow in -1i16..=1 {
                 for dcol in -1i16..=1 {
                     let p = Position::new(pos.row + drow, pos.col + dcol);
                     if DungeonGrid::in_bounds(p.row, p.col) {
                         self.state.explored.insert(p);
                     }
+                }
+            }
+        }
+    }
+
+    /// Mirrors `darken_room` from room.c: removes interior floor cells of `room` from the
+    /// explored set when the player exits through a door.
+    ///
+    /// Only **interior** rows/cols are darkened (border walls and doors are permanent).
+    /// Cells that contain items, stairs, or a revealed trap are preserved so that the player
+    /// retains awareness of their presence even after leaving the room.
+    fn darken_room(&mut self, room: &crate::world_gen::Room) {
+        for row in room.top_row + 1..room.bottom_row {
+            for col in room.left_col + 1..room.right_col {
+                let pos = Position::new(row, col);
+                let tile = self
+                    .current_level
+                    .grid
+                    .get(row, col)
+                    .unwrap_or(TileFlags::NOTHING);
+
+                let has_item = self.state.floor_items.iter().any(|fi| fi.position == pos)
+                    || self.state.floor_gold.iter().any(|g| g.position == pos);
+                let has_stairs = tile.contains(TileFlags::STAIRS);
+                let has_visible_trap =
+                    tile.contains(TileFlags::TRAP) && !tile.contains(TileFlags::HIDDEN);
+
+                if !has_item && !has_stairs && !has_visible_trap {
+                    self.state.explored.remove(&pos);
                 }
             }
         }
@@ -761,6 +795,33 @@ impl GameLoop {
         }
 
         if self.current_level.grid.is_walkable(target.row, target.col) {
+            // Mirrors the darken_room trigger in one_move_rogue (move.c):
+            // when the player steps FROM a DOOR cell TO a TUNNEL cell, the room
+            // they are leaving must be darkened (interior floor tiles removed from
+            // the explored set).
+            let old_pos = self.state.player_position;
+            let old_tile = self
+                .current_level
+                .grid
+                .get(old_pos.row, old_pos.col)
+                .unwrap_or(TileFlags::NOTHING);
+            let new_tile = self
+                .current_level
+                .grid
+                .get(target.row, target.col)
+                .unwrap_or(TileFlags::NOTHING);
+            if old_tile.contains(TileFlags::DOOR) && new_tile.contains(TileFlags::TUNNEL) {
+                if let Some(room) = self
+                    .current_level
+                    .rooms
+                    .iter()
+                    .find(|r| r.contains(old_pos.row, old_pos.col))
+                    .copied()
+                {
+                    self.darken_room(&room);
+                }
+            }
+
             self.state.player_position = target;
             self.state.stats.steps_taken += 1;
             self.state.last_move_blocked = false;
